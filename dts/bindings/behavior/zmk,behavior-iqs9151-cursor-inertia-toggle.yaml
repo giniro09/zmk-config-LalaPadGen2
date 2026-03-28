@@ -1,0 +1,29 @@
+description: IQS9151 cursor inertia toggle behavior
+
+compatible: "zmk,behavior-iqs9151-cursor-inertia-toggle"
+
+properties:
+  display-name:
+    type: string
+
+  label:
+    type: string
+    required: false
+    deprecated: true
+
+  "#binding-cells":
+    type: int
+    required: true
+    const: 0
+
+  target-side:
+    type: int
+    required: true
+    enum:
+      - 0
+      - 1
+    description: |
+      Target split side for the toggle behavior.
+      0 = peripheral/left, 1 = central/right.
+
+binding-cells: []

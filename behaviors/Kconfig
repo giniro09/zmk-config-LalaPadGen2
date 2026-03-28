@@ -1,0 +1,28 @@
+menuconfig ZMK_BEHAVIOR_TRACKPAD_TO_POS
+    bool "Trackpad to position behavior"
+    default y
+    help
+      Enable the trackpad-to-position behavior that raises position_state_changed
+      events for a virtual key position.
+
+menuconfig ZMK_BEHAVIOR_IQS9151_CURSOR_INERTIA_TOGGLE
+    bool "IQS9151 cursor inertia toggle behavior"
+    default y
+    depends on INPUT_IQS9151
+    help
+      Enable a global behavior that toggles the local IQS9151 cursor inertia
+      state on the targeted split side.
+
+menuconfig ZMK_BEHAVIOR_ZIP_DYNAMIC_SCALE
+    bool "Dynamic scale adjust behavior"
+    default y
+    help
+      Enable the behavior that adjusts the dynamic scale factor used by
+      the dynamic scaler input processor.
+
+menuconfig ZMK_BEHAVIOR_ZIP_DYNAMIC_SCALE_SET
+    bool "Dynamic scale set behavior"
+    default y
+    help
+      Enable the behavior that sets the dynamic scale factor used by
+      the dynamic scaler input processor.

@@ -1,0 +1,21 @@
+description: Dynamic scale adjust behavior
+
+compatible: "zmk,behavior-zip-dynamic-scale"
+
+properties:
+  display-name:
+    type: string
+
+  label:
+    type: string
+    required: false
+    deprecated: true
+
+  "#binding-cells":
+    type: int
+    required: true
+    const: 2
+
+binding-cells:
+  - param1
+  - param2

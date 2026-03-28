@@ -26,6 +26,18 @@
             #binding-cells = <2>;
         };
 
+        cursor_inertia_toggle_left: cursor_inertia_toggle_left {
+            compatible = "zmk,behavior-iqs9151-cursor-inertia-toggle";
+            #binding-cells = <0>;
+            target-side = <0>;
+        };
+
+        cursor_inertia_toggle_right: cursor_inertia_toggle_right {
+            compatible = "zmk,behavior-iqs9151-cursor-inertia-toggle";
+            #binding-cells = <0>;
+            target-side = <1>;
+        };
+
         mt2: mod_tap2 {
             compatible = "zmk,behavior-hold-tap";
             #binding-cells = <2>;
@@ -124,7 +136,7 @@
 &kp DOLLAR     &kp LEFT_BRACE        &kp RIGHT_BRACE        &kp PLUS   &kp EXCL                             &kp LEFT           &mkp MB1       &mkp MB2     &kp RIGHT  &kp MINUS
 &kp HASH       &kp LEFT_PARENTHESIS  &kp RIGHT_PARENTHESIS  &kp ASTRK  &kp QUESTION                         &kp SINGLE_QUOTE   &kp AMPERSAND  &kp PERCENT  &kp COLON  &kp UNDER
 &kp BACKSLASH  &kp EQUAL             &trans                 &kp LANG2  &trans        &trans  &kp BACKSPACE  &kp ENTER          &kp LANG1      &kp GRAVE    &kp PIPE   &kp RIGHT_SHIFT
-               &trans                &trans                 &trans     &trans        &trans  &trans         &trans             &trans         &trans       &trans
+               &cursor_inertia_toggle_left                &trans                 &zip_dyn_scale ZDS_XY ZDS_DEC     &trans        &zip_dyn_scale ZDS_XY ZDS_INC  &trans         &trans             &trans         &trans       &cursor_inertia_toggle_right
 &trans         &trans                &trans                                                                                                   &trans       &trans     &trans
 &trans         &trans                &trans                 &trans     &trans                               &trans             &trans         &trans       &trans     &trans
             >;
@@ -146,7 +158,7 @@
             display-name = "system_layer";
             bindings = <
 &kp F1   &kp F2   &kp F3   &kp F4   &kp F5                   &win_bt  &mac_bt  &bt BT_SEL 2  &bt BT_SEL 3  &bt BT_SEL 4
-&kp F6   &kp F7   &kp F8   &kp F9   &kp F10                  &trans   &trans   &trans        &trans        &trans
+&kp F6   &kp F7   &kp F8   &kp F9   &kp F10                  &trans  &trans  &trans  &trans  &trans
 &kp F11  &kp F12  &kp F13  &kp F14  &kp F15                  &trans   &trans   &trans        &trans        &trans
 &trans   &trans   &trans   &trans   &trans   &trans  &trans  &trans   &trans   &trans        &trans        &trans
          &trans   &trans   &trans   &trans   &trans  &trans  &trans   &trans   &trans        &trans

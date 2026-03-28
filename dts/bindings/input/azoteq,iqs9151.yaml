@@ -1,0 +1,12 @@
+description: |
+  Azoteq IQS9151 driver placeholder.
+
+compatible: "azoteq,iqs9151"
+
+include: i2c-device.yaml
+
+properties:
+  irq-gpios:
+    type: phandle-array
+    required: true
+    description: Interrupt GPIO for IQS9151 driver.

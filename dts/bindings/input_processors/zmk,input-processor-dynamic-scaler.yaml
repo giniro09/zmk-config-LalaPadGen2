@@ -1,0 +1,20 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: MIT
+
+description: Input processor for applying a dynamic scale factor
+
+compatible: "zmk,input-processor-dynamic-scaler"
+
+include: ip_zero_param.yaml
+
+properties:
+  type:
+    type: int
+    required: true
+  codes:
+    type: array
+    required: true
+  scale-group:
+    type: int
+    default: 0
+    description: "Dynamic scale group index (0: XY, 1: Scroll)"

@@ -1,0 +1,18 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: MIT
+
+description: Input processor that invokes behaviors and neutralizes matched events
+
+compatible: "zmk,input-processor-behaviors-consume"
+
+include: ip_zero_param.yaml
+
+properties:
+  type:
+    type: int
+  codes:
+    type: array
+    required: true
+  bindings:
+    type: phandle-array
+    required: true

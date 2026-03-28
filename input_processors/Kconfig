@@ -1,0 +1,41 @@
+menuconfig ZMK_INPUT_PROCESSOR_DYNAMIC_SCALER
+    bool "Dynamic scaler input processor"
+    default y
+    select SETTINGS
+    help
+      Enable a dynamic scaler input processor that applies a persisted scale
+      factor to REL events (e.g. cursor and scroll).
+
+if ZMK_INPUT_PROCESSOR_DYNAMIC_SCALER
+
+config ZMK_INPUT_PROCESSOR_DYNAMIC_SCALER_DEFAULT_SCALE_X10
+    int "Default dynamic scale (x10)"
+    range 2 50
+    default 10
+    help
+      Default scale for the dynamic scaler, stored as value * 10.
+      10 = 1.0x, 2 = 0.2x, 50 = 5.0x.
+
+config ZMK_INPUT_PROCESSOR_DYNAMIC_SCALER_MIN_SCALE_X10
+    int "Minimum dynamic scale (x10)"
+    range 2 50
+    default 2
+    help
+      Minimum scale for the dynamic scaler, stored as value * 10.
+
+config ZMK_INPUT_PROCESSOR_DYNAMIC_SCALER_MAX_SCALE_X10
+    int "Maximum dynamic scale (x10)"
+    range 2 50
+    default 50
+    help
+      Maximum scale for the dynamic scaler, stored as value * 10.
+
+endif
+
+menuconfig ZMK_INPUT_PROCESSOR_BEHAVIORS_CONSUME
+    bool "Behaviors consume input processor"
+    default y
+    help
+      Invoke behaviors for matched events, then neutralize the event so it
+      does not generate mouse button output. This avoids relying on STOP
+      being honored in layer overrides.
