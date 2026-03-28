@@ -58,6 +58,24 @@
         };
     };
 
+    macros {
+        win_bt: new_macro {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&bt BT_SEL 0>, <&macro_wait_time 200>, <&to 0>;
+
+            label = "NEW_MACRO";
+        };
+
+        mac_bt: new_macro {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&bt BT_SEL 1>, <&macro_wait_time 200>, <&to 1>;
+
+            label = "NEW_MACRO";
+        };
+    };
+
     keymap {
         compatible = "zmk,keymap";
 
@@ -127,13 +145,13 @@
         SYSTEM_LAYER {
             display-name = "system_layer";
             bindings = <
-&kp F1   &kp F2   &kp F3   &kp F4   &kp F5                   &bt BT_SEL 0  &bt BT_SEL 1  &bt BT_SEL 2  &bt BT_SEL 3  &bt BT_SEL 4
-&kp F6   &kp F7   &kp F8   &kp F9   &kp F10                  &trans        &trans        &trans        &trans        &trans
-&kp F11  &kp F12  &kp F13  &kp F14  &kp F15                  &trans        &trans        &trans        &trans        &trans
-&trans   &trans   &trans   &trans   &trans   &trans  &trans  &trans        &trans        &trans        &trans        &trans
-         &trans   &trans   &trans   &trans   &trans  &trans  &trans        &trans        &trans        &trans
-&trans   &trans   &trans                                                                 &trans        &trans        &trans
-&trans   &trans   &trans   &trans   &trans                   &trans        &trans        &trans        &trans        &trans
+&kp F1   &kp F2   &kp F3   &kp F4   &kp F5                   &win_bt  &mac_bt  &bt BT_SEL 2  &bt BT_SEL 3  &bt BT_SEL 4
+&kp F6   &kp F7   &kp F8   &kp F9   &kp F10                  &trans   &trans   &trans        &trans        &trans
+&kp F11  &kp F12  &kp F13  &kp F14  &kp F15                  &trans   &trans   &trans        &trans        &trans
+&trans   &trans   &trans   &trans   &trans   &trans  &trans  &trans   &trans   &trans        &trans        &trans
+         &trans   &trans   &trans   &trans   &trans  &trans  &trans   &trans   &trans        &trans
+&trans   &trans   &trans                                                       &trans        &trans        &trans
+&trans   &trans   &trans   &trans   &trans                   &trans   &trans   &trans        &trans        &trans
             >;
         };
     };
