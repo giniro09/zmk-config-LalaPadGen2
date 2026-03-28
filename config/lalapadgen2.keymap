@@ -59,20 +59,20 @@
     };
 
     macros {
-        win_bt: new_macro {
+        win_bt: win_bt {
             compatible = "zmk,behavior-macro";
             #binding-cells = <0>;
             bindings = <&bt BT_SEL 0>, <&macro_wait_time 200>, <&to 0>;
 
-            label = "NEW_MACRO";
+            label = "WIN_BT";
         };
 
-        mac_bt: new_macro {
+        mac_bt: mac_bt {
             compatible = "zmk,behavior-macro";
             #binding-cells = <0>;
             bindings = <&bt BT_SEL 1>, <&macro_wait_time 200>, <&to 1>;
 
-            label = "NEW_MACRO";
+            label = "MAC_BT";
         };
     };
 
