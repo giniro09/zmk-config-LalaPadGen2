@@ -52,7 +52,7 @@
             compatible = "zmk,behavior-tap-dance";
             label = "td_mo12";
             #binding-cells = <0>;
-            bindings = <&mo 3>, <&mo 3>;
+            bindings = <&mo 2>, <&mo 2>;
         };
     };
 
@@ -85,7 +85,7 @@
 &kp Q      &kp W      &kp E         &kp R        &kp T                                  &kp Y      &kp U      &kp I          &kp O          &kp P
 &kp A      &kp S      &kp D         &kp F        &kp G                                  &kp H      &kp J      &kp K          &lt 2 L        &kp MINUS
 &kp Z      &kp X      &kp C         &kp V        &kp B                                  &kp N      &kp M      &kp COMMA      &kp PERIOD     &mt RIGHT_SHIFT SLASH
-&kp LCTRL  &kp LWIN   &kp LEFT_ALT  &lt 5 LANG2  &lt 4 TAB  &lt 3 SPACE  &kp BACKSPACE  &kp ENTER  &kp LANG1  &kp RIGHT_GUI  &kp BACKSLASH  &kp ESCAPE
+&kp LCTRL  &kp LWIN   &kp LEFT_ALT  &lt 4 LANG2  &lt 3 TAB  &lt 2 SPACE  &kp BACKSPACE  &kp ENTER  &kp LANG1  &kp RIGHT_GUI  &kp BACKSLASH  &lt 2 ESCAPE
            &none      &kp RIGHT     &kp DOWN     &kp LEFT   &kp UP       &kp UP         &kp LEFT   &kp DOWN   &kp RIGHT      &none
 &mkp LCLK  &mkp RCLK  &mkp MCLK                                                                               &mkp LCLK      &mkp RCLK      &mkp MCLK
 &mkp MB4   &mkp MB5   &kp LG(TAB)   &kp LG(D)    &kp LCTRL                              &mkp MB4   &mkp MB5   &kp LG(TAB)    &kp LG(D)      &kp LCTRL
@@ -96,24 +96,12 @@
             display-name = "Default";
             bindings = <
 &kp Q      &kp W      &kp E         &kp R        &kp T                                  &kp Y      &kp U      &kp I          &kp O          &kp P
-&kp A      &kp S      &kp D         &kp F        &kp G                                  &kp H      &kp J      &kp K          &lt 2 L        &kp MINUS
+&kp A      &kp S      &kp D         &kp F        &kp G                                  &kp H      &kp J      &kp K          &lt 0 L        &kp MINUS
 &kp Z      &kp X      &kp C         &kp V        &kp B                                  &kp N      &kp M      &kp COMMA      &kp PERIOD     &mt RIGHT_SHIFT SLASH
-&kp LCTRL  &kp LWIN   &kp LEFT_ALT  &lt 5 LANG2  &lt 4 TAB  &lt 3 SPACE  &kp BACKSPACE  &kp ENTER  &kp LANG1  &kp RIGHT_GUI  &kp BACKSLASH  &kp ESCAPE
+&kp LCTRL  &kp LWIN   &kp LEFT_ALT  &lt 4 LANG2  &lt 3 TAB  &lt 2 SPACE  &kp BACKSPACE  &kp ENTER  &kp LANG1  &kp RIGHT_GUI  &kp BACKSLASH  &kp ESCAPE
            &none      &kp RIGHT     &kp DOWN     &kp LEFT   &kp UP       &kp UP         &kp LEFT   &kp DOWN   &kp RIGHT      &none
 &mkp LCLK  &mkp RCLK  &mkp MCLK                                                                               &mkp LCLK      &mkp RCLK      &mkp MCLK
 &mkp MB4   &mkp MB5   &kp LG(TAB)   &kp LG(D)    &kp LCTRL                              &mkp MB4   &mkp MB5   &kp LG(TAB)    &kp LG(D)      &kp LCTRL
-            >;
-        };
-
-        scroll {
-            bindings = <
-&trans  &trans  &trans  &trans  &trans                  &trans  &trans    &trans    &trans  &trans
-&trans  &trans  &trans  &trans  &trans                  &trans  &mkp MB1  &mkp MB2  &trans  &trans
-&trans  &trans  &trans  &trans  &trans                  &trans  &trans    &trans    &trans  &trans
-&trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans    &trans    &trans  &trans
-        &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans    &trans    &trans
-&trans  &trans  &trans                                                    &trans    &trans  &trans
-&trans  &trans  &trans  &trans  &trans                  &trans  &trans    &trans    &trans  &trans
             >;
         };
 
