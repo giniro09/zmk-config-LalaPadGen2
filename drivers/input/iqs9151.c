@@ -242,7 +242,7 @@ struct iqs9151_data {
 };
 
 static atomic_t iqs9151_saved_cursor_inertia_enabled =
-    ATOMIC_INIT(CONFIG_INPUT_IQS9151_CURSOR_INERTIA_ENABLE);
+    ATOMIC_INIT(IS_ENABLED(CONFIG_INPUT_IQS9151_CURSOR_INERTIA_ENABLE));
 
 static void iqs9151_cursor_inertia_save_cb(struct k_work *work);
 
@@ -2768,7 +2768,7 @@ static int iqs9151_settings_set(const char *name, size_t len, settings_read_cb r
         return -EINVAL;
     }
 
-    uint8_t enabled = CONFIG_INPUT_IQS9151_CURSOR_INERTIA_ENABLE ? 1U : 0U;
+    uint8_t enabled = IS_ENABLED(CONFIG_INPUT_IQS9151_CURSOR_INERTIA_ENABLE) ? 1U : 0U;
     int rc = read_cb(cb_arg, &enabled, sizeof(enabled));
     if (rc < 0) {
         return rc;
