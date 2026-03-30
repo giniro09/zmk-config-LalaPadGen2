@@ -4,6 +4,7 @@ menuconfig INPUT_IQS9151
     depends on GPIO
     depends on I2C
     depends on INPUT
+    select ADC
     depends on DT_HAS_AZOTEQ_IQS9151_ENABLED
     help
       Enable the AZOTEQ IQS9151 trackpad driver.
@@ -183,6 +184,56 @@ config INPUT_IQS9151_CURSOR_INERTIA_MIN_AVG_SPEED
     help
       Minimum average recent single-finger speed required to start
       cursor inertia.
+
+config INPUT_IQS9151_FORCE_THRESHOLD
+    int "IQS9151 FSR force threshold"
+    range 1 4095
+    default 2200
+    help
+      Raw ADC threshold used to enter force mode.
+
+config INPUT_IQS9151_FORCE_RELEASE_THRESHOLD
+    int "IQS9151 FSR release threshold"
+    range 1 4095
+    default 1700
+    help
+      Raw ADC threshold used to leave force mode.
+
+config INPUT_IQS9151_FORCE_MOVE_THRESHOLD
+    int "IQS9151 force movement threshold"
+    range 1 500
+    default 20
+    help
+      Relative movement threshold used to classify a force press as a
+      moving-context precision interaction.
+
+config INPUT_IQS9151_CARET_HOLD_MS
+    int "IQS9151 caret hold delay (ms)"
+    range 50 1000
+    default 300
+    help
+      Quiet time after a 1-finger force press before entering caret mode.
+
+config INPUT_IQS9151_CARET_DEADZONE
+    int "IQS9151 caret deadzone"
+    range 1 500
+    default 80
+    help
+      Distance from the caret center before directional key output starts.
+
+config INPUT_IQS9151_CARET_REPEAT_INITIAL_MS
+    int "IQS9151 caret repeat initial delay (ms)"
+    range 50 1000
+    default 220
+    help
+      Initial delay before caret mode starts repeating a direction.
+
+config INPUT_IQS9151_CARET_REPEAT_BASE_MS
+    int "IQS9151 caret repeat base interval (ms)"
+    range 10 500
+    default 90
+    help
+      Base interval used for caret repeats before force/movement speed-up.
 
 config INPUT_IQS9151_2F_TAP_ENABLE
     bool "IQS9151 two-finger tap enable"

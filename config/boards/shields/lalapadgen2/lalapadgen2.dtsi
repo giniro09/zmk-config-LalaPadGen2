@@ -3,6 +3,7 @@
 #include <dt-bindings/zmk/input_transform.h>
 #include <dt-bindings/zmk/zip_dynamic_scale.h>
 #include <zephyr/dt-bindings/input/input-event-codes.h>
+#include <behaviors.dtsi>
 #include <input/processors.dtsi>
 #include "lalapadgen2-layouts.dtsi"
 
@@ -135,6 +136,14 @@
                     &tp_to_pos  POS_TP_PINCH_L
                     >;
     };
+
+    trackpad_caret_behaviors: trackpad_caret_behaviors {
+        compatible = "zmk,input-processor-behaviors-consume";
+        #input-processor-cells = <0>;
+        type = <INPUT_EV_KEY>;
+        codes = <INPUT_KEY_LEFT INPUT_KEY_RIGHT INPUT_KEY_UP INPUT_KEY_DOWN>;
+        bindings = <&kp LEFT>, <&kp RIGHT>, <&kp UP>, <&kp DOWN>;
+    };
     
     zip_dynamic_xy_scaler: zip_dynamic_xy_scaler {
         compatible = "zmk,input-processor-dynamic-scaler";
@@ -154,21 +163,31 @@
         track-remainders;
     };
 
+    zip_precision_xy_scaler: zip_precision_xy_scaler {
+        compatible = "zmk,input-processor-precision-scaler";
+        #input-processor-cells = <0>;
+        track-remainders;
+    };
+
     trackpad_listener_R: trackpad_listener_R {
         compatible = "zmk,input-listener";
         status = "disabled";
         device = <&trackpad_split_R>;
         input-processors = <&trackpad_key_behaviors_R>,
+                           <&trackpad_caret_behaviors>,
                            <&zip_xy_scaler 1 5>,
                            <&zip_scroll_scaler 1 12>,
                            <&zip_dynamic_xy_scaler>,
+                           <&zip_precision_xy_scaler>,
                            <&zip_dynamic_scroll_scaler>;
         lowspeedmode {
             layers = <1>,<2>;
             input-processors =  <&trackpad_key_behaviors_R>,
+                                <&trackpad_caret_behaviors>,
                                 <&zip_xy_scaler 1 15>,
                                 <&zip_scroll_scaler 1 40>,
                                 <&zip_dynamic_xy_scaler>,
+                                <&zip_precision_xy_scaler>,
                                 <&zip_dynamic_scroll_scaler>;
         };
     };
@@ -177,16 +196,20 @@
         status = "disabled";
         device = <&trackpad_split_L>;
         input-processors = <&trackpad_key_behaviors_L>,
+                           <&trackpad_caret_behaviors>,
                            <&zip_xy_scaler 1 5>,
                            <&zip_scroll_scaler 1 12>,
                            <&zip_dynamic_xy_scaler>,
+                           <&zip_precision_xy_scaler>,
                            <&zip_dynamic_scroll_scaler>;
         lowspeedmode {
             layers = <1>,<2>;
             input-processors =  <&trackpad_key_behaviors_L>,
+                                <&trackpad_caret_behaviors>,
                                 <&zip_xy_scaler 1 15>,
                                 <&zip_scroll_scaler 1 40>,
                                 <&zip_dynamic_xy_scaler>,
+                                <&zip_precision_xy_scaler>,
                                 <&zip_dynamic_scroll_scaler>;
         };
     };

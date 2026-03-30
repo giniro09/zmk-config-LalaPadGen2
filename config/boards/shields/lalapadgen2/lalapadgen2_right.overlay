@@ -1,5 +1,13 @@
 #include "lalapadgen2.dtsi"
 
+&xiao_i2c {
+    drv2605l: drv2605l@5a {
+        compatible = "ti,drv2605l";
+        reg = <0x5a>;
+        status = "okay";
+    };
+};
+
 &default_transform {
     col-offset = <6>;
 };
@@ -19,6 +27,13 @@
     status = "okay";
     device = <&iqs9151>;
 };
+
+&iqs9151 {
+    /* XIAO BLE Plus D14 is routed as raw SAADC channel 7 (P0.09). */
+    io-channels = <&adc 7>;
+    haptic-device = <&drv2605l>;
+};
+
 &trackpad_listener_L {
     status = "okay";
 };

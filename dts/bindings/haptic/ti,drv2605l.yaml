@@ -1,0 +1,8 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: MIT
+
+description: Minimal DRV2605L I2C haptic node for local firmware helpers
+
+compatible: "ti,drv2605l"
+
+include: i2c-device.yaml

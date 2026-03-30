@@ -39,3 +39,22 @@ menuconfig ZMK_INPUT_PROCESSOR_BEHAVIORS_CONSUME
       Invoke behaviors for matched events, then neutralize the event so it
       does not generate mouse button output. This avoids relying on STOP
       being honored in layer overrides.
+
+menuconfig ZMK_INPUT_PROCESSOR_PRECISION_SCALER
+    bool "Precision scaler input processor"
+    default y
+    help
+      Apply an extra fixed XY scale while the IQS9151 precision pointer mode
+      is active.
+
+if ZMK_INPUT_PROCESSOR_PRECISION_SCALER
+
+config ZMK_INPUT_PROCESSOR_PRECISION_SCALER_SCALE_X10
+    int "Precision scale (x10)"
+    range 1 10
+    default 4
+    help
+      Extra pointer scale applied during precision pointer mode.
+      4 = 0.4x.
+
+endif

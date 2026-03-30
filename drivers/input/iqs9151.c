@@ -4,6 +4,8 @@
  */
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
+#include <zephyr/dt-bindings/adc/nrf-saadc.h>
+#include <zephyr/drivers/adc.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/input/input.h>
@@ -87,10 +89,38 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define TWO_FINGER_PINCH_WHEEL_DIV 12
 #define TWO_FINGER_PINCH_WHEEL_GAIN_X10 CONFIG_INPUT_IQS9151_2F_PINCH_WHEEL_GAIN_X10
 #define TWO_FINGER_PINCH_WHEEL_GAIN_DEN 10
+#define FORCE_THRESHOLD CONFIG_INPUT_IQS9151_FORCE_THRESHOLD
+#define FORCE_RELEASE_THRESHOLD CONFIG_INPUT_IQS9151_FORCE_RELEASE_THRESHOLD
+#define FORCE_MOVE_THRESHOLD CONFIG_INPUT_IQS9151_FORCE_MOVE_THRESHOLD
+#define CARET_HOLD_MS CONFIG_INPUT_IQS9151_CARET_HOLD_MS
+#define CARET_DEADZONE CONFIG_INPUT_IQS9151_CARET_DEADZONE
+#define CARET_REPEAT_INITIAL_MS CONFIG_INPUT_IQS9151_CARET_REPEAT_INITIAL_MS
+#define CARET_REPEAT_BASE_MS CONFIG_INPUT_IQS9151_CARET_REPEAT_BASE_MS
+
+#define DRV2605L_REG_MODE 0x01
+#define DRV2605L_REG_LIBRARY 0x03
+#define DRV2605L_REG_WAVESEQ1 0x04
+#define DRV2605L_REG_WAVESEQ2 0x05
+#define DRV2605L_REG_GO 0x0C
+#define DRV2605L_MODE_INTERNAL_TRIGGER 0x00
+#define DRV2605L_LIBRARY_LRA 0x06
+
+#define DRV2605L_EFFECT_TAP 1
+#define DRV2605L_EFFECT_FORCE 47
+#define DRV2605L_EFFECT_PRECISION 10
+#define DRV2605L_EFFECT_CARET 14
+
+struct iqs9151_io_channel_config {
+    uint8_t channel;
+};
 
 struct iqs9151_config {
     struct i2c_dt_spec i2c;
     struct gpio_dt_spec irq_gpio;
+    struct iqs9151_io_channel_config fsr_io;
+    struct i2c_dt_spec haptic;
+    bool has_fsr;
+    bool has_haptic;
 };
 struct iqs9151_frame {
     int16_t rel_x;
@@ -107,6 +137,11 @@ enum iqs9151_two_finger_mode {
     IQS9151_2F_MODE_NONE = 0,
     IQS9151_2F_MODE_SCROLL,
     IQS9151_2F_MODE_PINCH,
+};
+enum iqs9151_hold_owner {
+    IQS9151_HOLD_OWNER_NONE = 0,
+    IQS9151_HOLD_OWNER_TAPDRAG,
+    IQS9151_HOLD_OWNER_FORCE,
 };
 struct iqs9151_one_finger_state {
     bool active;
@@ -189,6 +224,23 @@ struct iqs9151_motion_history {
     uint8_t head;
     uint8_t count;
 };
+struct iqs9151_force_state {
+    bool active;
+    bool overlay_only;
+    bool button_down_sent;
+    bool precision_active;
+    bool caret_candidate;
+    bool caret_active;
+    uint8_t finger_count;
+    uint16_t button;
+    uint16_t fsr_raw;
+    int64_t quiet_since_ms;
+    uint16_t center_x;
+    uint16_t center_y;
+    int32_t caret_dx;
+    int32_t caret_dy;
+    uint16_t repeat_code;
+};
 
 struct iqs9151_data {
     const struct device *dev;
@@ -199,14 +251,22 @@ struct iqs9151_data {
     struct k_work_delayable three_finger_click_work;
     struct k_work_delayable inertia_scroll_work;
     struct k_work_delayable inertia_cursor_work;
+    struct k_work_delayable caret_repeat_work;
     struct iqs9151_inertia_state inertia_scroll;
     struct iqs9151_inertia_state inertia_cursor;
     int32_t scroll_ema_x_fp;
     int32_t scroll_ema_y_fp;
     int32_t cursor_ema_x_fp;
     int32_t cursor_ema_y_fp;
+    const struct device *fsr_adc;
+    struct adc_channel_cfg fsr_acc;
+    struct adc_sequence fsr_as;
+    uint16_t fsr_sample_buffer;
+    bool fsr_ready;
+    bool haptic_ready;
     struct iqs9151_motion_history scroll_motion_history;
     struct iqs9151_motion_history cursor_motion_history;
+    struct iqs9151_force_state force;
     struct iqs9151_one_finger_state one_finger;
     struct iqs9151_two_finger_state two_finger;
     atomic_t cursor_inertia_enabled;
@@ -236,6 +296,7 @@ struct iqs9151_data {
     uint16_t three_last_x;
     uint16_t three_last_y;
     uint16_t hold_button;
+    enum iqs9151_hold_owner hold_owner;
     struct iqs9151_finger_history_entry finger_history[IQS9151_FINGER_HISTORY_SIZE];
     uint8_t finger_history_head;
     uint8_t finger_history_count;
@@ -293,6 +354,147 @@ static int iqs9151_report_rel_event(const struct device *dev, uint16_t code,
     }
 #endif
     return input_report_rel(dev, code, value, sync, timeout);
+}
+
+static int32_t iqs9151_abs32(int32_t value);
+
+static void iqs9151_force_reset(struct iqs9151_data *data) {
+    data->force.active = false;
+    data->force.overlay_only = false;
+    data->force.button_down_sent = false;
+    data->force.precision_active = false;
+    data->force.caret_candidate = false;
+    data->force.caret_active = false;
+    data->force.finger_count = 0U;
+    data->force.button = 0U;
+    data->force.quiet_since_ms = 0;
+    data->force.center_x = 0U;
+    data->force.center_y = 0U;
+    data->force.caret_dx = 0;
+    data->force.caret_dy = 0;
+    data->force.repeat_code = 0U;
+}
+
+static bool iqs9151_tapdrag_active(const struct iqs9151_data *data) {
+    return (data->hold_owner == IQS9151_HOLD_OWNER_TAPDRAG) &&
+           ((data->one_finger.active && data->one_finger.tapdrag_second_touch &&
+             data->one_finger.hold_sent) ||
+            (data->two_finger.active && data->two_finger.tapdrag_second_touch &&
+             data->two_finger.hold_sent) ||
+            (data->three_active && data->three_tapdrag_second_touch && data->three_hold_sent));
+}
+
+static uint16_t iqs9151_force_button_for_fingers(uint8_t finger_count) {
+    switch (finger_count) {
+    case 1U:
+        return INPUT_BTN_0;
+    case 2U:
+        return INPUT_BTN_1;
+    case 3U:
+        return INPUT_BTN_2;
+    default:
+        return 0U;
+    }
+}
+
+static int iqs9151_drv2605l_write(const struct iqs9151_config *cfg, uint8_t reg, uint8_t value) {
+    return i2c_reg_write_byte_dt(&cfg->haptic, reg, value);
+}
+
+static void iqs9151_haptic_play_effect(struct iqs9151_data *data, uint8_t effect) {
+    const struct iqs9151_config *cfg = data->dev->config;
+
+    if (!cfg->has_haptic || !data->haptic_ready) {
+        return;
+    }
+
+    if (iqs9151_drv2605l_write(cfg, DRV2605L_REG_WAVESEQ1, effect) != 0 ||
+        iqs9151_drv2605l_write(cfg, DRV2605L_REG_WAVESEQ2, 0) != 0 ||
+        iqs9151_drv2605l_write(cfg, DRV2605L_REG_GO, 1) != 0) {
+        LOG_WRN("DRV2605L playback failed");
+    }
+}
+
+static int iqs9151_haptic_init(struct iqs9151_data *data, const struct iqs9151_config *cfg) {
+    if (!cfg->has_haptic) {
+        return 0;
+    }
+
+    if (!device_is_ready(cfg->haptic.bus)) {
+        LOG_WRN("DRV2605L I2C bus not ready");
+        return -ENODEV;
+    }
+
+    int ret = iqs9151_drv2605l_write(cfg, DRV2605L_REG_MODE, DRV2605L_MODE_INTERNAL_TRIGGER);
+    if (ret == 0) {
+        ret = iqs9151_drv2605l_write(cfg, DRV2605L_REG_LIBRARY, DRV2605L_LIBRARY_LRA);
+    }
+
+    if (ret != 0) {
+        LOG_WRN("DRV2605L init failed (%d)", ret);
+        return ret;
+    }
+
+    data->haptic_ready = true;
+    return 0;
+}
+
+static int iqs9151_fsr_init(struct iqs9151_data *data, const struct iqs9151_config *cfg) {
+    if (!cfg->has_fsr) {
+        return 0;
+    }
+
+    if (data->fsr_adc == NULL || !device_is_ready(data->fsr_adc)) {
+        LOG_WRN("FSR ADC device is not ready");
+        return -ENODEV;
+    }
+
+#ifdef CONFIG_ADC_NRFX_SAADC
+    data->fsr_acc = (struct adc_channel_cfg){
+        .channel_id = cfg->fsr_io.channel,
+        .gain = ADC_GAIN_1_6,
+        .reference = ADC_REF_INTERNAL,
+        .acquisition_time = ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 40),
+        .input_positive = NRF_SAADC_AIN0 + cfg->fsr_io.channel,
+    };
+    data->fsr_as = (struct adc_sequence){
+        .channels = BIT(cfg->fsr_io.channel),
+        .buffer = &data->fsr_sample_buffer,
+        .buffer_size = sizeof(data->fsr_sample_buffer),
+        .oversampling = 2,
+        .calibrate = true,
+        .resolution = 12,
+    };
+#else
+    LOG_WRN("FSR ADC is unsupported on this platform");
+    return -ENOTSUP;
+#endif
+
+    const int ret = adc_channel_setup(data->fsr_adc, &data->fsr_acc);
+    if (ret == 0) {
+        data->fsr_ready = true;
+    } else {
+        LOG_WRN("FSR ADC channel setup failed (%d)", ret);
+    }
+
+    return ret;
+}
+
+static bool iqs9151_read_fsr(struct iqs9151_data *data, uint16_t *raw_out) {
+    if (!data->fsr_ready || raw_out == NULL) {
+        return false;
+    }
+
+    int ret = adc_read(data->fsr_adc, &data->fsr_as);
+    data->fsr_as.calibrate = false;
+    if (ret != 0) {
+        LOG_WRN("FSR ADC read failed (%d)", ret);
+        return false;
+    }
+
+    *raw_out = data->fsr_sample_buffer;
+    data->force.fsr_raw = *raw_out;
+    return true;
 }
 
 static const uint8_t iqs9151_alp_compensation[] = {
@@ -918,6 +1120,15 @@ bool iqs9151_get_cursor_inertia_enabled(const struct device *dev) {
     return iqs9151_cursor_inertia_enabled(data);
 }
 
+bool iqs9151_get_precision_pointer_active(const struct device *dev) {
+    if (dev == NULL) {
+        return false;
+    }
+
+    const struct iqs9151_data *data = dev->data;
+    return data->force.precision_active;
+}
+
 static void iqs9151_release_hold(struct iqs9151_data *data, const struct device *dev) {
     if (data->hold_button == 0U) {
         return;
@@ -925,6 +1136,7 @@ static void iqs9151_release_hold(struct iqs9151_data *data, const struct device 
 
     iqs9151_report_key_event(dev, data->hold_button, false, true, K_NO_WAIT);
     data->hold_button = 0U;
+    data->hold_owner = IQS9151_HOLD_OWNER_NONE;
 }
 
 static void iqs9151_clear_one_finger_click_pending(struct iqs9151_data *data) {
@@ -1012,16 +1224,96 @@ static bool iqs9151_emit_click(struct iqs9151_data *data,
     return true;
 }
 
+static bool iqs9151_emit_hold_press_owned(struct iqs9151_data *data,
+                                          const struct device *dev,
+                                          uint16_t button,
+                                          enum iqs9151_hold_owner owner);
+
 static bool iqs9151_emit_hold_press(struct iqs9151_data *data,
                                     const struct device *dev,
                                     uint16_t button) {
+    return iqs9151_emit_hold_press_owned(data, dev, button, IQS9151_HOLD_OWNER_TAPDRAG);
+}
+
+static bool iqs9151_emit_hold_press_owned(struct iqs9151_data *data,
+                                          const struct device *dev,
+                                          uint16_t button,
+                                          enum iqs9151_hold_owner owner) {
     if (!iqs9151_try_tap_hold_emit(data, dev)) {
         return false;
     }
 
     iqs9151_report_key_event(dev, button, true, true, K_FOREVER);
     data->hold_button = button;
+    data->hold_owner = owner;
     return true;
+}
+
+static void iqs9151_clear_all_click_pending(struct iqs9151_data *data) {
+    iqs9151_clear_one_finger_click_pending(data);
+    iqs9151_clear_two_finger_click_pending(data);
+    iqs9151_clear_three_finger_click_pending(data);
+    (void)k_work_cancel_delayable(&data->one_finger_click_work);
+    (void)k_work_cancel_delayable(&data->two_finger_click_work);
+    (void)k_work_cancel_delayable(&data->three_finger_click_work);
+}
+
+static void iqs9151_emit_key_tap(const struct device *dev, uint16_t code) {
+    iqs9151_report_key_event(dev, code, true, true, K_FOREVER);
+    iqs9151_report_key_event(dev, code, false, true, K_FOREVER);
+}
+
+static int32_t iqs9151_caret_repeat_delay_ms(const struct iqs9151_data *data) {
+    const int32_t force_bonus =
+        MAX(0, (int32_t)data->force.fsr_raw - FORCE_THRESHOLD) / 80;
+    const int32_t move_bonus =
+        MAX(iqs9151_abs32(data->force.caret_dx), iqs9151_abs32(data->force.caret_dy)) / 80;
+    return CLAMP(CARET_REPEAT_BASE_MS - force_bonus - move_bonus, 30, CARET_REPEAT_BASE_MS);
+}
+
+static void iqs9151_caret_repeat_work_cb(struct k_work *work) {
+    struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+    struct iqs9151_data *data = CONTAINER_OF(dwork, struct iqs9151_data, caret_repeat_work);
+
+    if (!data->force.caret_active || data->force.repeat_code == 0U) {
+        return;
+    }
+
+    iqs9151_emit_key_tap(data->dev, data->force.repeat_code);
+    (void)k_work_reschedule(&data->caret_repeat_work,
+                            K_MSEC(iqs9151_caret_repeat_delay_ms(data)));
+}
+
+static void iqs9151_caret_cancel_repeat(struct iqs9151_data *data) {
+    data->force.repeat_code = 0U;
+    (void)k_work_cancel_delayable(&data->caret_repeat_work);
+}
+
+static void iqs9151_caret_set_repeat_code(struct iqs9151_data *data, uint16_t code) {
+    if (data->force.repeat_code == code) {
+        return;
+    }
+
+    iqs9151_caret_cancel_repeat(data);
+    data->force.repeat_code = code;
+    if (code != 0U) {
+        (void)k_work_reschedule(&data->caret_repeat_work, K_MSEC(CARET_REPEAT_INITIAL_MS));
+    }
+}
+
+static uint16_t iqs9151_caret_code_from_delta(int32_t dx, int32_t dy) {
+    const int32_t abs_dx = iqs9151_abs32(dx);
+    const int32_t abs_dy = iqs9151_abs32(dy);
+
+    if (MAX(abs_dx, abs_dy) < CARET_DEADZONE) {
+        return 0U;
+    }
+
+    if (abs_dx >= abs_dy) {
+        return dx < 0 ? INPUT_KEY_LEFT : INPUT_KEY_RIGHT;
+    }
+
+    return dy < 0 ? INPUT_KEY_UP : INPUT_KEY_DOWN;
 }
 
 static bool iqs9151_get_finger1_xy(const struct iqs9151_frame *frame,
@@ -1197,6 +1489,7 @@ static bool iqs9151_one_finger_update(struct iqs9151_data *data,
         if (second_tap_detected &&
             IS_ENABLED(CONFIG_INPUT_IQS9151_1F_TAP_ENABLE)) {
             (void)iqs9151_emit_click(data, dev, INPUT_BTN_0);
+            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
         }
         iqs9151_one_finger_reset(state);
         return released_from_hold;
@@ -1222,10 +1515,13 @@ static bool iqs9151_one_finger_update(struct iqs9151_data *data,
     if (tap_detected &&
         tap_emitted &&
         IS_ENABLED(CONFIG_INPUT_IQS9151_1F_PRESSHOLD_ENABLE)) {
+        iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
         data->one_finger_click_pending = true;
         data->one_finger_click_pending_ms = now_ms;
         k_work_reschedule(&data->one_finger_click_work,
                           K_MSEC(ONE_FINGER_CLICK_HOLD_MAX_MS));
+    } else if (tap_detected && tap_emitted) {
+        iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
     } else if (frame->finger_count != 0U) {
         iqs9151_clear_one_finger_click_pending(data);
         (void)k_work_cancel_delayable(&data->one_finger_click_work);
@@ -1421,6 +1717,7 @@ static void iqs9151_two_finger_update(struct iqs9151_data *data,
         if (second_tap_detected &&
             IS_ENABLED(CONFIG_INPUT_IQS9151_2F_TAP_ENABLE)) {
             (void)iqs9151_emit_click(data, dev, INPUT_BTN_1);
+            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
         }
 
         iqs9151_two_finger_reset(state);
@@ -1455,10 +1752,13 @@ static void iqs9151_two_finger_update(struct iqs9151_data *data,
         if (tap_detected &&
             tap_emitted &&
             IS_ENABLED(CONFIG_INPUT_IQS9151_2F_PRESSHOLD_ENABLE)) {
+            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
             data->two_finger_click_pending = true;
             data->two_finger_click_pending_ms = now_ms;
             k_work_reschedule(&data->two_finger_click_work,
                               K_MSEC(TWO_FINGER_CLICK_HOLD_MAX_MS));
+        } else if (tap_detected && tap_emitted) {
+            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
         }
 
         iqs9151_two_finger_reset(state);
@@ -1501,10 +1801,13 @@ static void iqs9151_two_finger_update(struct iqs9151_data *data,
     if (tap_detected &&
         tap_emitted &&
         IS_ENABLED(CONFIG_INPUT_IQS9151_2F_PRESSHOLD_ENABLE)) {
+        iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
         data->two_finger_click_pending = true;
         data->two_finger_click_pending_ms = now_ms;
         k_work_reschedule(&data->two_finger_click_work,
                           K_MSEC(TWO_FINGER_CLICK_HOLD_MAX_MS));
+    } else if (tap_detected && tap_emitted) {
+        iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
     }
 
     iqs9151_two_finger_reset(state);
@@ -1666,6 +1969,7 @@ static bool iqs9151_three_finger_update(struct iqs9151_data *data,
         if (second_tap_detected &&
             IS_ENABLED(CONFIG_INPUT_IQS9151_3F_TAP_ENABLE)) {
             (void)iqs9151_emit_click(data, dev, INPUT_BTN_2);
+            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
         }
 
         iqs9151_three_finger_reset(data);
@@ -1704,10 +2008,13 @@ static bool iqs9151_three_finger_update(struct iqs9151_data *data,
         if (tap_detected &&
             tap_emitted &&
             IS_ENABLED(CONFIG_INPUT_IQS9151_3F_PRESSHOLD_ENABLE)) {
+            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
             data->three_finger_click_pending = true;
             data->three_finger_click_pending_ms = now_ms;
             k_work_reschedule(&data->three_finger_click_work,
                               K_MSEC(THREE_FINGER_CLICK_HOLD_MAX_MS));
+        } else if (tap_detected && tap_emitted) {
+            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
         }
 
         iqs9151_three_finger_reset(data);
@@ -1748,10 +2055,13 @@ static bool iqs9151_three_finger_update(struct iqs9151_data *data,
     if (tap_detected &&
         tap_emitted &&
         IS_ENABLED(CONFIG_INPUT_IQS9151_3F_PRESSHOLD_ENABLE)) {
+        iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
         data->three_finger_click_pending = true;
         data->three_finger_click_pending_ms = now_ms;
         k_work_reschedule(&data->three_finger_click_work,
                           K_MSEC(THREE_FINGER_CLICK_HOLD_MAX_MS));
+    } else if (tap_detected && tap_emitted) {
+        iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
     }
 
     iqs9151_three_finger_reset(data);
@@ -2250,11 +2560,155 @@ static void iqs9151_update_inertia_ema(struct iqs9151_data *data,
     }
 }
 
+static bool iqs9151_update_force_state(struct iqs9151_data *data,
+                                       const struct iqs9151_frame *frame,
+                                       const struct iqs9151_frame *prev_frame,
+                                       int64_t now_ms,
+                                       bool cursor_moving) {
+    const struct device *dev = data->dev;
+    uint16_t fsr_raw = 0U;
+    bool released_from_hold = false;
+    const bool touching = frame->finger_count >= 1U && frame->finger_count <= 3U;
+    const bool tapdrag_active = iqs9151_tapdrag_active(data);
+    const bool moving_context =
+        touching && frame->finger_count == 1U &&
+        (cursor_moving || iqs9151_abs32(frame->rel_x) >= FORCE_MOVE_THRESHOLD ||
+         iqs9151_abs32(frame->rel_y) >= FORCE_MOVE_THRESHOLD);
+
+    if (!iqs9151_read_fsr(data, &fsr_raw)) {
+        return false;
+    }
+
+    if (!data->force.active && touching && fsr_raw >= FORCE_THRESHOLD) {
+        uint16_t center_x = 0U;
+        uint16_t center_y = 0U;
+
+        iqs9151_force_reset(data);
+        data->force.active = true;
+        data->force.finger_count = frame->finger_count;
+        data->force.button = iqs9151_force_button_for_fingers(frame->finger_count);
+        data->force.overlay_only = tapdrag_active;
+        data->force.quiet_since_ms = now_ms;
+        (void)iqs9151_get_finger1_xy(frame, prev_frame, &center_x, &center_y);
+        data->force.center_x = center_x;
+        data->force.center_y = center_y;
+
+        if (!tapdrag_active) {
+            iqs9151_clear_all_click_pending(data);
+            if (data->hold_button != 0U && data->hold_owner == IQS9151_HOLD_OWNER_TAPDRAG) {
+                iqs9151_release_hold(data, dev);
+                released_from_hold = true;
+            }
+
+            if (data->force.button != 0U &&
+                iqs9151_emit_hold_press_owned(data, dev, data->force.button,
+                                             IQS9151_HOLD_OWNER_FORCE)) {
+                data->force.button_down_sent = true;
+            }
+        }
+
+        iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_FORCE);
+
+        if (frame->finger_count == 1U && (moving_context || tapdrag_active)) {
+            data->force.precision_active = true;
+            data->force.caret_candidate = false;
+            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_PRECISION);
+        } else if (frame->finger_count == 1U) {
+            data->force.caret_candidate = true;
+        }
+    }
+
+    if (!data->force.active) {
+        return released_from_hold;
+    }
+
+    if (!touching || frame->finger_count != data->force.finger_count ||
+        fsr_raw <= FORCE_RELEASE_THRESHOLD) {
+        iqs9151_caret_cancel_repeat(data);
+        if (data->force.button_down_sent && data->hold_owner == IQS9151_HOLD_OWNER_FORCE) {
+            iqs9151_release_hold(data, dev);
+            released_from_hold = true;
+        }
+        iqs9151_force_reset(data);
+        return released_from_hold;
+    }
+
+    if (data->force.precision_active) {
+        data->force.caret_candidate = false;
+        return released_from_hold;
+    }
+
+    if (!data->force.caret_candidate && !data->force.caret_active) {
+        return released_from_hold;
+    }
+
+    if (frame->finger_count != 1U) {
+        data->force.caret_candidate = false;
+        return released_from_hold;
+    }
+
+    const int32_t abs_x = iqs9151_abs32(frame->rel_x);
+    const int32_t abs_y = iqs9151_abs32(frame->rel_y);
+
+    if (!data->force.caret_active &&
+        (cursor_moving || abs_x >= FORCE_MOVE_THRESHOLD || abs_y >= FORCE_MOVE_THRESHOLD)) {
+        data->force.caret_candidate = false;
+        data->force.precision_active = true;
+        iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_PRECISION);
+        return released_from_hold;
+    }
+
+    if (!data->force.caret_active &&
+        (now_ms - data->force.quiet_since_ms) >= CARET_HOLD_MS) {
+        uint16_t center_x = data->force.center_x;
+        uint16_t center_y = data->force.center_y;
+
+        (void)iqs9151_get_finger1_xy(frame, prev_frame, &center_x, &center_y);
+        data->force.center_x = center_x;
+        data->force.center_y = center_y;
+        data->force.caret_active = true;
+        data->force.caret_candidate = false;
+        data->force.precision_active = false;
+        data->force.caret_dx = 0;
+        data->force.caret_dy = 0;
+        iqs9151_caret_cancel_repeat(data);
+        if (data->force.button_down_sent && data->hold_owner == IQS9151_HOLD_OWNER_FORCE) {
+            iqs9151_release_hold(data, dev);
+            released_from_hold = true;
+            data->force.button_down_sent = false;
+        }
+        iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_CARET);
+    }
+
+    if (data->force.caret_active) {
+        uint16_t finger_x = data->force.center_x;
+        uint16_t finger_y = data->force.center_y;
+        const uint16_t next_code =
+            (iqs9151_get_finger1_xy(frame, prev_frame, &finger_x, &finger_y))
+                ? iqs9151_caret_code_from_delta((int32_t)finger_x - (int32_t)data->force.center_x,
+                                               (int32_t)finger_y - (int32_t)data->force.center_y)
+                : 0U;
+
+        data->force.caret_dx = (int32_t)finger_x - (int32_t)data->force.center_x;
+        data->force.caret_dy = (int32_t)finger_y - (int32_t)data->force.center_y;
+
+        if (next_code == 0U) {
+            iqs9151_caret_cancel_repeat(data);
+        } else if (data->force.repeat_code != next_code) {
+            iqs9151_emit_key_tap(dev, next_code);
+            iqs9151_caret_set_repeat_code(data, next_code);
+        }
+    }
+
+    return released_from_hold;
+}
+
 static void iqs9151_report_frame_events(const struct device *dev,
                                         const struct iqs9151_frame *frame,
                                         const struct iqs9151_two_finger_result *two_result,
                                         bool cursor_moving,
-                                        bool suppress_cursor_tail) {
+                                        bool suppress_cursor_tail,
+                                        bool caret_active) {
     if (two_result->pinch_started) {
         iqs9151_report_key_event(dev, INPUT_BTN_7, true, true, K_FOREVER);
     }
@@ -2276,7 +2730,7 @@ static void iqs9151_report_frame_events(const struct device *dev,
         if (have_y) {
             iqs9151_report_rel_event(dev, INPUT_REL_WHEEL, two_result->scroll_y, true, K_NO_WAIT);
         }
-    } else if (frame->finger_count == 1U && cursor_moving && !suppress_cursor_tail) {
+    } else if (frame->finger_count == 1U && cursor_moving && !suppress_cursor_tail && !caret_active) {
         iqs9151_report_rel_event(dev, INPUT_REL_X, frame->rel_x, false, K_NO_WAIT);
         iqs9151_report_rel_event(dev, INPUT_REL_Y, frame->rel_y, true, K_NO_WAIT);
     }
@@ -2304,6 +2758,10 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
     suppress_cursor_tail =
         iqs9151_should_suppress_cursor_for_two_finger_tail(data, frame, &prev_frame,
                                                            &two_result);
+    released_from_hold =
+        iqs9151_update_force_state(data, frame, &prev_frame, now_ms, cursor_moving) ||
+        released_from_hold;
+    suppress_cursor_tail = suppress_cursor_tail || data->force.caret_active;
 
     if (frame->finger_count == 3U || data->three_active) {
         iqs9151_inertia_cancel(&data->inertia_scroll, &data->inertia_scroll_work);
@@ -2318,17 +2776,25 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
         iqs9151_inertia_cancel(&data->inertia_cursor, &data->inertia_cursor_work);
         iqs9151_motion_history_reset(&data->cursor_motion_history);
     }
+    if (data->force.precision_active || data->force.caret_active) {
+        iqs9151_inertia_cancel(&data->inertia_cursor, &data->inertia_cursor_work);
+        iqs9151_motion_history_reset(&data->cursor_motion_history);
+    }
 
     iqs9151_report_frame_events(dev, frame, &two_result, cursor_moving,
-                                suppress_cursor_tail);
+                                suppress_cursor_tail, data->force.caret_active);
 
     LOG_DBG("rel x=%d y=%d info=0x%04x tp=0x%04x finger=%d f1x=%u f1y=%u f2x=%u f2y=%u",
             frame->rel_x, frame->rel_y, frame->info_flags, frame->trackpad_flags,
             frame->finger_count, frame->finger1_x, frame->finger1_y,
             frame->finger2_x, frame->finger2_y);
-    LOG_DBG("gesture_state: hold_button=0x%04x 2f_mode=%d",
+    LOG_DBG("gesture_state: hold_button=0x%04x owner=%d 2f_mode=%d force=%u precision=%d caret=%d",
             data->hold_button,
-            data->two_finger.mode);
+            data->hold_owner,
+            data->two_finger.mode,
+            data->force.fsr_raw,
+            data->force.precision_active,
+            data->force.caret_active);
 
     iqs9151_update_inertia_ema(data, frame, &prev_frame, &two_result, now_ms,
                                released_from_hold, cursor_moving,
@@ -2712,6 +3178,7 @@ static int iqs9151_init(const struct device *dev) {
     k_work_init_delayable(&data->three_finger_click_work, iqs9151_three_finger_click_work_cb);
     k_work_init_delayable(&data->inertia_scroll_work, iqs9151_inertia_scroll_work_cb);
     k_work_init_delayable(&data->inertia_cursor_work, iqs9151_inertia_cursor_work_cb);
+    k_work_init_delayable(&data->caret_repeat_work, iqs9151_caret_repeat_work_cb);
     iqs9151_inertia_state_reset(&data->inertia_scroll);
     iqs9151_inertia_state_reset(&data->inertia_cursor);
     atomic_set(&data->cursor_inertia_enabled, atomic_get(&iqs9151_saved_cursor_inertia_enabled));
@@ -2730,7 +3197,13 @@ static int iqs9151_init(const struct device *dev) {
     data->three_finger_two_lead_valid = false;
     iqs9151_three_finger_reset(data);
     data->hold_button = 0U;
+    data->hold_owner = IQS9151_HOLD_OWNER_NONE;
     iqs9151_reset_finger_history(data);
+    iqs9151_force_reset(data);
+    data->fsr_ready = false;
+    data->haptic_ready = false;
+    (void)iqs9151_fsr_init(data, cfg);
+    (void)iqs9151_haptic_init(data, cfg);
     gpio_init_callback(&data->gpio_cb, iqs9151_gpio_cb,
                         BIT(cfg->irq_gpio.pin));
     ret = gpio_add_callback(cfg->irq_gpio.port, &data->gpio_cb);
@@ -2798,6 +3271,7 @@ void iqs9151_test_context_init(void *ctx, const struct device *dev) {
     k_work_init_delayable(&data->three_finger_click_work, iqs9151_three_finger_click_work_cb);
     k_work_init_delayable(&data->inertia_scroll_work, iqs9151_inertia_scroll_work_cb);
     k_work_init_delayable(&data->inertia_cursor_work, iqs9151_inertia_cursor_work_cb);
+    k_work_init_delayable(&data->caret_repeat_work, iqs9151_caret_repeat_work_cb);
     iqs9151_inertia_state_reset(&data->inertia_scroll);
     iqs9151_inertia_state_reset(&data->inertia_cursor);
     atomic_set(&data->cursor_inertia_enabled, atomic_get(&iqs9151_saved_cursor_inertia_enabled));
@@ -2816,7 +3290,9 @@ void iqs9151_test_context_init(void *ctx, const struct device *dev) {
     data->three_finger_two_lead_valid = false;
     iqs9151_three_finger_reset(data);
     data->hold_button = 0U;
+    data->hold_owner = IQS9151_HOLD_OWNER_NONE;
     iqs9151_reset_finger_history(data);
+    iqs9151_force_reset(data);
 }
 
 void iqs9151_test_cancel_pending_work(void *ctx) {
@@ -2827,6 +3303,7 @@ void iqs9151_test_cancel_pending_work(void *ctx) {
     (void)k_work_cancel_delayable(&data->three_finger_click_work);
     (void)k_work_cancel_delayable(&data->inertia_scroll_work);
     (void)k_work_cancel_delayable(&data->inertia_cursor_work);
+    (void)k_work_cancel_delayable(&data->caret_repeat_work);
     (void)k_work_cancel(&data->work);
 }
 
@@ -2892,15 +3369,29 @@ void iqs9151_test_force_pinch_session(void *ctx, bool active) {
 }
 #endif
 
-#define IQS9151_INIT(inst)                                                \
-    static const struct iqs9151_config iqs9151_config_##inst = {    \
-        .i2c = I2C_DT_SPEC_INST_GET(inst),                                      \
-        .irq_gpio = GPIO_DT_SPEC_INST_GET(inst, irq_gpios),                     \
-  };                                                                          \
-  static struct iqs9151_data iqs9151_data_##inst;                 \
-  DEVICE_DT_INST_DEFINE(inst, iqs9151_init, NULL,                       \
-                        &iqs9151_data_##inst,                           \
-                        &iqs9151_config_##inst, POST_KERNEL,            \
-                        CONFIG_INPUT_IQS9151_INIT_PRIORITY, NULL);
+#define IQS9151_INIT(inst)                                                                    \
+    static const struct iqs9151_config iqs9151_config_##inst = {                             \
+        .i2c = I2C_DT_SPEC_INST_GET(inst),                                                   \
+        .irq_gpio = GPIO_DT_SPEC_INST_GET(inst, irq_gpios),                                  \
+        .has_fsr = DT_INST_NODE_HAS_PROP(inst, io_channels),                                 \
+        .has_haptic = DT_INST_NODE_HAS_PROP(inst, haptic_device),                            \
+        COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, io_channels),                                \
+                    (.fsr_io = {.channel = DT_IO_CHANNELS_INPUT_BY_IDX(DT_DRV_INST(inst),    \
+                                                                       0)},),                \
+                    ())                                                                       \
+        COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, haptic_device),                              \
+                    (.haptic = I2C_DT_SPEC_GET(                                              \
+                         DT_PHANDLE(DT_DRV_INST(inst), haptic_device)),),                    \
+                    ())                                                                       \
+    };                                                                                        \
+    static struct iqs9151_data iqs9151_data_##inst = {                                       \
+        COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, io_channels),                                \
+                    (.fsr_adc = DEVICE_DT_GET(                                               \
+                         DT_IO_CHANNELS_CTLR_BY_IDX(DT_DRV_INST(inst), 0)),),                \
+                    ())                                                                       \
+    };                                                                                        \
+    DEVICE_DT_INST_DEFINE(inst, iqs9151_init, NULL, &iqs9151_data_##inst,                    \
+                          &iqs9151_config_##inst, POST_KERNEL,                               \
+                          CONFIG_INPUT_IQS9151_INIT_PRIORITY, NULL);
 
 DT_INST_FOREACH_STATUS_OKAY(IQS9151_INIT);
