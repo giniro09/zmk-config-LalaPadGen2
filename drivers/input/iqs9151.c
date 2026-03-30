@@ -4,7 +4,6 @@
  */
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
-#include <zephyr/dt-bindings/adc/nrf-saadc.h>
 #include <zephyr/drivers/adc.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/i2c.h>
@@ -109,6 +108,7 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define DRV2605L_EFFECT_FORCE 47
 #define DRV2605L_EFFECT_PRECISION 10
 #define DRV2605L_EFFECT_CARET 14
+#define IQS9151_NRF_SAADC_AIN_BASE 1
 
 struct iqs9151_io_channel_config {
     uint8_t channel;
@@ -455,7 +455,7 @@ static int iqs9151_fsr_init(struct iqs9151_data *data, const struct iqs9151_conf
         .gain = ADC_GAIN_1_6,
         .reference = ADC_REF_INTERNAL,
         .acquisition_time = ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 40),
-        .input_positive = NRF_SAADC_AIN0 + cfg->fsr_io.channel,
+        .input_positive = IQS9151_NRF_SAADC_AIN_BASE + cfg->fsr_io.channel,
     };
     data->fsr_as = (struct adc_sequence){
         .channels = BIT(cfg->fsr_io.channel),
