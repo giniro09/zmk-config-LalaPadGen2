@@ -136,6 +136,12 @@ Force Hold + Move で drag を成立させる。
 Force Drag は、Tap 系 drag とは別の、
 **押し込み系の drag 手段**として扱う。
 
+TapDrag との優先関係は以下で固定する。
+- TapDrag の待機中に Force threshold を超えた場合は、TapDrag 待機をキャンセルして Force 系を優先する
+- すでに TapDrag の 2 回目接触に入って drag 中の場合は、button ownership は TapDrag 側のまま維持する
+- その場合でも Precision Pointer は重ねてよく、移動減速だけを適用してよい
+- TapDrag drag 中の Force では Caret Mode には入らない
+
 ## 10. Caret Mode 仕様
 ### 10.1 目的
 テキスト編集時に、通常ポインタ移動ではなく、
@@ -154,6 +160,10 @@ Caret Mode に入ったら、
 
 以後のトラックパッド移動は、
 上下左右の文字カーソル移動入力へ変換する。
+
+Caret Mode に入る瞬間に、Force Click 由来で保持している
+button down が残っている場合は、その button up を即座に送ってから
+Caret Mode へ切り替える。
 
 ### 10.4 基本挙動
 - 最初の移動で 1 発入力
