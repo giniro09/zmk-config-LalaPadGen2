@@ -4,7 +4,6 @@ menuconfig INPUT_IQS9151
     depends on GPIO
     depends on I2C
     depends on INPUT
-    select ADC
     depends on DT_HAS_AZOTEQ_IQS9151_ENABLED
     help
       Enable the AZOTEQ IQS9151 trackpad driver.
