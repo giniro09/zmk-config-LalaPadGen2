@@ -234,6 +234,15 @@ config INPUT_IQS9151_CARET_REPEAT_BASE_MS
     help
       Base interval used for caret repeats before force/movement speed-up.
 
+config INPUT_IQS9151_HAPTIC_FSR_GUARD_MS
+    int "IQS9151 haptic-to-FSR guard window (ms)"
+    range 0 100
+    default 25
+    help
+      Hold the last stable FSR value for a short window after haptic playback
+      so mechanical coupling between the LRA and FSR does not cause false
+      force transitions.
+
 config INPUT_IQS9151_2F_TAP_ENABLE
     bool "IQS9151 two-finger tap enable"
     default y

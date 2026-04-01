@@ -124,6 +124,10 @@ Precision Pointer では以下を行う。
 ### 8.3 ハプティック
 Precision Pointer に入った瞬間に、専用の軽いハプティックを返す。
 
+機構上、LRA の振動が FSR に回り込む可能性がある場合は、
+haptic 直後の短時間は FSR を直前の安定値で保持し、
+mode 再トリガや誤 release を抑制する。
+
 ## 9. Force Drag 仕様
 ### 9.1 基本方針
 Force Hold + Move で drag を成立させる。

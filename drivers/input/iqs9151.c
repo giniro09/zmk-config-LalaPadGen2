@@ -95,6 +95,7 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define CARET_DEADZONE CONFIG_INPUT_IQS9151_CARET_DEADZONE
 #define CARET_REPEAT_INITIAL_MS CONFIG_INPUT_IQS9151_CARET_REPEAT_INITIAL_MS
 #define CARET_REPEAT_BASE_MS CONFIG_INPUT_IQS9151_CARET_REPEAT_BASE_MS
+#define HAPTIC_FSR_GUARD_MS CONFIG_INPUT_IQS9151_HAPTIC_FSR_GUARD_MS
 
 #define DRV2605L_REG_MODE 0x01
 #define DRV2605L_REG_LIBRARY 0x03
@@ -262,6 +263,8 @@ struct iqs9151_data {
     struct adc_channel_cfg fsr_acc;
     struct adc_sequence fsr_as;
     uint16_t fsr_sample_buffer;
+    uint16_t fsr_stable_raw;
+    int64_t fsr_guard_until_ms;
     bool fsr_ready;
     bool haptic_ready;
     struct iqs9151_motion_history scroll_motion_history;
@@ -412,6 +415,16 @@ static void iqs9151_haptic_play_effect(struct iqs9151_data *data, uint8_t effect
         iqs9151_drv2605l_write(cfg, DRV2605L_REG_WAVESEQ2, 0) != 0 ||
         iqs9151_drv2605l_write(cfg, DRV2605L_REG_GO, 1) != 0) {
         LOG_WRN("DRV2605L playback failed");
+        return;
+    }
+
+    /*
+     * The current mechanism proposal can couple LRA motion back into the FSR.
+     * Freeze force-state input to the last stable sample for a short window so
+     * haptic playback does not look like a new press or release.
+     */
+    if (data->fsr_ready && HAPTIC_FSR_GUARD_MS > 0) {
+        data->fsr_guard_until_ms = k_uptime_get() + HAPTIC_FSR_GUARD_MS;
     }
 }
 
@@ -492,7 +505,12 @@ static bool iqs9151_read_fsr(struct iqs9151_data *data, uint16_t *raw_out) {
         return false;
     }
 
-    *raw_out = data->fsr_sample_buffer;
+    if (k_uptime_get() < data->fsr_guard_until_ms) {
+        *raw_out = data->fsr_stable_raw;
+    } else {
+        *raw_out = data->fsr_sample_buffer;
+        data->fsr_stable_raw = *raw_out;
+    }
     data->force.fsr_raw = *raw_out;
     return true;
 }
@@ -3200,6 +3218,8 @@ static int iqs9151_init(const struct device *dev) {
     data->hold_owner = IQS9151_HOLD_OWNER_NONE;
     iqs9151_reset_finger_history(data);
     iqs9151_force_reset(data);
+    data->fsr_stable_raw = 0U;
+    data->fsr_guard_until_ms = 0;
     data->fsr_ready = false;
     data->haptic_ready = false;
     (void)iqs9151_fsr_init(data, cfg);
@@ -3293,6 +3313,8 @@ void iqs9151_test_context_init(void *ctx, const struct device *dev) {
     data->hold_owner = IQS9151_HOLD_OWNER_NONE;
     iqs9151_reset_finger_history(data);
     iqs9151_force_reset(data);
+    data->fsr_stable_raw = 0U;
+    data->fsr_guard_until_ms = 0;
 }
 
 void iqs9151_test_cancel_pending_work(void *ctx) {
