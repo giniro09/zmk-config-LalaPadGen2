@@ -96,6 +96,7 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define CARET_REPEAT_INITIAL_MS CONFIG_INPUT_IQS9151_CARET_REPEAT_INITIAL_MS
 #define CARET_REPEAT_BASE_MS CONFIG_INPUT_IQS9151_CARET_REPEAT_BASE_MS
 #define HAPTIC_FSR_GUARD_MS CONFIG_INPUT_IQS9151_HAPTIC_FSR_GUARD_MS
+#define FORCE_TOUCH_POLL_INTERVAL_MS 20
 
 #define DRV2605L_REG_MODE 0x01
 #define DRV2605L_REG_LIBRARY 0x03
@@ -254,6 +255,7 @@ struct iqs9151_data {
     struct k_work_delayable inertia_scroll_work;
     struct k_work_delayable inertia_cursor_work;
     struct k_work_delayable caret_repeat_work;
+    struct k_work_delayable force_poll_work;
     struct iqs9151_inertia_state inertia_scroll;
     struct iqs9151_inertia_state inertia_cursor;
     int32_t scroll_ema_x_fp;
@@ -1336,6 +1338,27 @@ static void iqs9151_caret_set_repeat_code(struct iqs9151_data *data, uint16_t co
     data->force.repeat_code = code;
     if (code != 0U) {
         (void)k_work_reschedule(&data->caret_repeat_work, K_MSEC(CARET_REPEAT_INITIAL_MS));
+    }
+}
+
+static void iqs9151_force_poll_work_cb(struct k_work *work) {
+    struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+    struct iqs9151_data *data = CONTAINER_OF(dwork, struct iqs9151_data, force_poll_work);
+
+    k_work_submit(&data->work);
+}
+
+static void iqs9151_force_poll_update(struct iqs9151_data *data,
+                                      const struct iqs9151_frame *frame) {
+    const struct iqs9151_config *cfg = data->dev->config;
+    const bool should_poll =
+        cfg->has_fsr && frame->finger_count >= 1U && frame->finger_count <= 3U;
+
+    if (should_poll) {
+        (void)k_work_reschedule(&data->force_poll_work,
+                                K_MSEC(FORCE_TOUCH_POLL_INTERVAL_MS));
+    } else {
+        (void)k_work_cancel_delayable(&data->force_poll_work);
     }
 }
 
@@ -2858,6 +2881,7 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
             data->force.precision_active,
             data->force.caret_active);
 
+    iqs9151_force_poll_update(data, frame);
     iqs9151_update_inertia_ema(data, frame, &prev_frame, &two_result, now_ms,
                                released_from_hold, cursor_moving,
                                suppress_cursor_tail);
@@ -3241,6 +3265,7 @@ static int iqs9151_init(const struct device *dev) {
     k_work_init_delayable(&data->inertia_scroll_work, iqs9151_inertia_scroll_work_cb);
     k_work_init_delayable(&data->inertia_cursor_work, iqs9151_inertia_cursor_work_cb);
     k_work_init_delayable(&data->caret_repeat_work, iqs9151_caret_repeat_work_cb);
+    k_work_init_delayable(&data->force_poll_work, iqs9151_force_poll_work_cb);
     iqs9151_inertia_state_reset(&data->inertia_scroll);
     iqs9151_inertia_state_reset(&data->inertia_cursor);
     atomic_set(&data->cursor_inertia_enabled, atomic_get(&iqs9151_saved_cursor_inertia_enabled));
@@ -3339,6 +3364,7 @@ void iqs9151_test_context_init(void *ctx, const struct device *dev) {
     k_work_init_delayable(&data->inertia_scroll_work, iqs9151_inertia_scroll_work_cb);
     k_work_init_delayable(&data->inertia_cursor_work, iqs9151_inertia_cursor_work_cb);
     k_work_init_delayable(&data->caret_repeat_work, iqs9151_caret_repeat_work_cb);
+    k_work_init_delayable(&data->force_poll_work, iqs9151_force_poll_work_cb);
     iqs9151_inertia_state_reset(&data->inertia_scroll);
     iqs9151_inertia_state_reset(&data->inertia_cursor);
     atomic_set(&data->cursor_inertia_enabled, atomic_get(&iqs9151_saved_cursor_inertia_enabled));
@@ -3376,6 +3402,7 @@ void iqs9151_test_cancel_pending_work(void *ctx) {
     (void)k_work_cancel_delayable(&data->inertia_scroll_work);
     (void)k_work_cancel_delayable(&data->inertia_cursor_work);
     (void)k_work_cancel_delayable(&data->caret_repeat_work);
+    (void)k_work_cancel_delayable(&data->force_poll_work);
     (void)k_work_cancel(&data->work);
 }
 
