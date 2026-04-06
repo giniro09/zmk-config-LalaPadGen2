@@ -235,6 +235,7 @@ struct iqs9151_force_state {
     uint8_t finger_count;
     uint16_t button;
     uint16_t fsr_raw;
+    uint16_t fsr_delta_raw;
     int64_t quiet_since_ms;
     uint16_t center_x;
     uint16_t center_y;
@@ -264,7 +265,10 @@ struct iqs9151_data {
     struct adc_sequence fsr_as;
     uint16_t fsr_sample_buffer;
     uint16_t fsr_stable_raw;
+    uint16_t fsr_touch_baseline_raw;
+    uint8_t fsr_touch_baseline_fingers;
     int64_t fsr_guard_until_ms;
+    bool fsr_touch_baseline_valid;
     bool fsr_ready;
     bool haptic_ready;
     struct iqs9151_motion_history scroll_motion_history;
@@ -381,6 +385,7 @@ static void iqs9151_force_reset(struct iqs9151_data *data) {
     data->force.finger_count = 0U;
     data->force.button = 0U;
     data->force.quiet_since_ms = 0;
+    data->force.fsr_delta_raw = 0U;
     data->force.center_x = 0U;
     data->force.center_y = 0U;
     data->force.caret_dx = 0;
@@ -1298,7 +1303,7 @@ static void iqs9151_emit_key_tap(const struct device *dev, uint16_t code) {
 
 static int32_t iqs9151_caret_repeat_delay_ms(const struct iqs9151_data *data) {
     const int32_t force_bonus =
-        MAX(0, (int32_t)data->force.fsr_raw - FORCE_THRESHOLD) / 80;
+        MAX(0, (int32_t)data->force.fsr_delta_raw - FORCE_THRESHOLD) / 80;
     const int32_t move_bonus =
         MAX(iqs9151_abs32(data->force.caret_dx), iqs9151_abs32(data->force.caret_dy)) / 80;
     return CLAMP(CARET_REPEAT_BASE_MS - force_bonus - move_bonus, 30, CARET_REPEAT_BASE_MS);
@@ -2600,6 +2605,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
                                        bool cursor_moving) {
     const struct device *dev = data->dev;
     uint16_t fsr_raw = 0U;
+    int32_t fsr_delta = 0;
     bool released_from_hold = false;
     const bool touching = frame->finger_count >= 1U && frame->finger_count <= 3U;
     const bool tapdrag_active = iqs9151_tapdrag_active(data);
@@ -2612,7 +2618,29 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         return false;
     }
 
-    if (!data->force.active && touching && fsr_raw >= FORCE_THRESHOLD) {
+    if (!touching) {
+        data->fsr_touch_baseline_valid = false;
+        data->fsr_touch_baseline_fingers = 0U;
+    } else if (!data->fsr_touch_baseline_valid ||
+               data->fsr_touch_baseline_fingers != frame->finger_count ||
+               prev_frame->finger_count == 0U) {
+        data->fsr_touch_baseline_raw = fsr_raw;
+        data->fsr_touch_baseline_fingers = frame->finger_count;
+        data->fsr_touch_baseline_valid = true;
+    } else if (!data->force.active && fsr_raw < data->fsr_touch_baseline_raw) {
+        /*
+         * Before force engages, allow the baseline to settle downward so small
+         * ADC drift does not immediately count as intentional force.
+         */
+        data->fsr_touch_baseline_raw = fsr_raw;
+    }
+
+    if (data->fsr_touch_baseline_valid && fsr_raw > data->fsr_touch_baseline_raw) {
+        fsr_delta = (int32_t)fsr_raw - (int32_t)data->fsr_touch_baseline_raw;
+    }
+    data->force.fsr_delta_raw = (uint16_t)CLAMP(fsr_delta, 0, UINT16_MAX);
+
+    if (!data->force.active && touching && fsr_delta >= FORCE_THRESHOLD) {
         uint16_t center_x = 0U;
         uint16_t center_y = 0U;
 
@@ -2656,7 +2684,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     }
 
     if (!touching || frame->finger_count != data->force.finger_count ||
-        fsr_raw <= FORCE_RELEASE_THRESHOLD) {
+        fsr_delta <= FORCE_RELEASE_THRESHOLD) {
         iqs9151_caret_cancel_repeat(data);
         if (data->force.button_down_sent && data->hold_owner == IQS9151_HOLD_OWNER_FORCE) {
             iqs9151_release_hold(data, dev);
@@ -2821,11 +2849,12 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
             frame->rel_x, frame->rel_y, frame->info_flags, frame->trackpad_flags,
             frame->finger_count, frame->finger1_x, frame->finger1_y,
             frame->finger2_x, frame->finger2_y);
-    LOG_DBG("gesture_state: hold_button=0x%04x owner=%d 2f_mode=%d force=%u precision=%d caret=%d",
+    LOG_DBG("gesture_state: hold_button=0x%04x owner=%d 2f_mode=%d force=%u delta=%u precision=%d caret=%d",
             data->hold_button,
             data->hold_owner,
             data->two_finger.mode,
             data->force.fsr_raw,
+            data->force.fsr_delta_raw,
             data->force.precision_active,
             data->force.caret_active);
 
@@ -3234,7 +3263,10 @@ static int iqs9151_init(const struct device *dev) {
     iqs9151_reset_finger_history(data);
     iqs9151_force_reset(data);
     data->fsr_stable_raw = 0U;
+    data->fsr_touch_baseline_raw = 0U;
+    data->fsr_touch_baseline_fingers = 0U;
     data->fsr_guard_until_ms = 0;
+    data->fsr_touch_baseline_valid = false;
     data->fsr_ready = false;
     data->haptic_ready = false;
     (void)iqs9151_fsr_init(data, cfg);
@@ -3329,7 +3361,10 @@ void iqs9151_test_context_init(void *ctx, const struct device *dev) {
     iqs9151_reset_finger_history(data);
     iqs9151_force_reset(data);
     data->fsr_stable_raw = 0U;
+    data->fsr_touch_baseline_raw = 0U;
+    data->fsr_touch_baseline_fingers = 0U;
     data->fsr_guard_until_ms = 0;
+    data->fsr_touch_baseline_valid = false;
 }
 
 void iqs9151_test_cancel_pending_work(void *ctx) {

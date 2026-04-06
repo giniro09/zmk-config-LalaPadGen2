@@ -26,19 +26,6 @@
 &trackpad_listener_R {
     status = "okay";
     device = <&iqs9151>;
-    /* Diagnostic build: disable trackpad key/button output mapping. */
-    input-processors = <&zip_xy_scaler 1 5>,
-                       <&zip_scroll_scaler 1 12>,
-                       <&zip_dynamic_xy_scaler>,
-                       <&zip_precision_xy_scaler>,
-                       <&zip_dynamic_scroll_scaler>;
-    lowspeedmode {
-        input-processors = <&zip_xy_scaler 1 15>,
-                           <&zip_scroll_scaler 1 40>,
-                           <&zip_dynamic_xy_scaler>,
-                           <&zip_precision_xy_scaler>,
-                           <&zip_dynamic_scroll_scaler>;
-    };
 };
 
 &iqs9151 {

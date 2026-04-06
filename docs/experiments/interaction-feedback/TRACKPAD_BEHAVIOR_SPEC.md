@@ -82,6 +82,9 @@ Force Click は、**しきい値を超えた瞬間**に発火する。
 この仕様により、Force Click は単発 click だけでなく、
 drag の起点としても使える。
 
+ここでいうしきい値は FSR の絶対値ではなく、
+その touch 開始時に記録した基準値からの増分として扱う。
+
 ## 6. Tap と Force Click の差
 - Tap click: 軽い触覚
 - Force Click: より強い触覚
