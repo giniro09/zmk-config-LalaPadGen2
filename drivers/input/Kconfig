@@ -28,6 +28,14 @@ config INPUT_IQS9151_SUPPRESS_KEY_OUTPUT
       IQS9151 driver while leaving relative pointer motion intact. Use this to
       isolate unexpected click/drag behavior from the trackpad button paths.
 
+config INPUT_IQS9151_SUPPRESS_FORCE_BUTTON_OUTPUT
+    bool "Suppress IQS9151 force button output"
+    default n
+    help
+      Diagnostic option that suppresses only Force-triggered button down/up
+      output while keeping existing tap/tapdrag key paths active. Use this to
+      isolate unexpected drag selection caused by the force interaction path.
+
 config INPUT_IQS9151_INIT_PRIORITY
     int "IQS9151 init priority"
     default 80

@@ -1267,6 +1267,11 @@ static bool iqs9151_emit_hold_press_owned(struct iqs9151_data *data,
                                           const struct device *dev,
                                           uint16_t button,
                                           enum iqs9151_hold_owner owner) {
+    if (owner == IQS9151_HOLD_OWNER_FORCE &&
+        IS_ENABLED(CONFIG_INPUT_IQS9151_SUPPRESS_FORCE_BUTTON_OUTPUT)) {
+        return false;
+    }
+
     if (!iqs9151_try_tap_hold_emit(data, dev)) {
         return false;
     }
