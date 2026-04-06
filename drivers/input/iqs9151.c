@@ -337,6 +337,16 @@ static int iqs9151_report_key_event(const struct device *dev, uint16_t code,
         return 0;
     }
 #endif
+
+    if (IS_ENABLED(CONFIG_INPUT_IQS9151_SUPPRESS_KEY_OUTPUT)) {
+        ARG_UNUSED(dev);
+        ARG_UNUSED(code);
+        ARG_UNUSED(value);
+        ARG_UNUSED(sync);
+        ARG_UNUSED(timeout);
+        return 0;
+    }
+
     return input_report_key(dev, code, value, sync, timeout);
 }
 

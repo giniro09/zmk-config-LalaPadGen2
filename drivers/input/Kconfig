@@ -20,6 +20,14 @@ config INPUT_IQS9151_LOG_LEVEL
       0: none, 1: err, 2: wrn, 3: inf, 4: dbg.
       Defaults to INPUT_LOG_LEVEL to follow input subsystem policy.
 
+config INPUT_IQS9151_SUPPRESS_KEY_OUTPUT
+    bool "Suppress IQS9151 key/button output"
+    default n
+    help
+      Diagnostic option that suppresses all key/button events emitted by the
+      IQS9151 driver while leaving relative pointer motion intact. Use this to
+      isolate unexpected click/drag behavior from the trackpad button paths.
+
 config INPUT_IQS9151_INIT_PRIORITY
     int "IQS9151 init priority"
     default 80
