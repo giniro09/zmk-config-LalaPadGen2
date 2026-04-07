@@ -90,6 +90,7 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define TWO_FINGER_PINCH_WHEEL_GAIN_DEN 10
 #define FORCE_THRESHOLD CONFIG_INPUT_IQS9151_FORCE_THRESHOLD
 #define FORCE_RELEASE_THRESHOLD CONFIG_INPUT_IQS9151_FORCE_RELEASE_THRESHOLD
+#define FORCE_BASELINE_SETTLE_MS CONFIG_INPUT_IQS9151_FORCE_BASELINE_SETTLE_MS
 #define FORCE_MOVE_THRESHOLD CONFIG_INPUT_IQS9151_FORCE_MOVE_THRESHOLD
 #define CARET_HOLD_MS CONFIG_INPUT_IQS9151_CARET_HOLD_MS
 #define CARET_DEADZONE CONFIG_INPUT_IQS9151_CARET_DEADZONE
@@ -269,6 +270,7 @@ struct iqs9151_data {
     uint16_t fsr_stable_raw;
     uint16_t fsr_touch_baseline_raw;
     uint8_t fsr_touch_baseline_fingers;
+    int64_t fsr_touch_baseline_started_ms;
     int64_t fsr_guard_until_ms;
     bool fsr_touch_baseline_valid;
     bool fsr_ready;
@@ -2649,7 +2651,15 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
                prev_frame->finger_count == 0U) {
         data->fsr_touch_baseline_raw = fsr_raw;
         data->fsr_touch_baseline_fingers = frame->finger_count;
+        data->fsr_touch_baseline_started_ms = now_ms;
         data->fsr_touch_baseline_valid = true;
+    } else if (!data->force.active &&
+               (now_ms - data->fsr_touch_baseline_started_ms) < FORCE_BASELINE_SETTLE_MS) {
+        /*
+         * Let the initial touch pressure settle for a short window so the
+         * normal "finger landing" ramp does not immediately count as force.
+         */
+        data->fsr_touch_baseline_raw = fsr_raw;
     } else if (!data->force.active && fsr_raw < data->fsr_touch_baseline_raw) {
         /*
          * Before force engages, allow the baseline to settle downward so small
@@ -3290,6 +3300,7 @@ static int iqs9151_init(const struct device *dev) {
     data->fsr_stable_raw = 0U;
     data->fsr_touch_baseline_raw = 0U;
     data->fsr_touch_baseline_fingers = 0U;
+    data->fsr_touch_baseline_started_ms = 0;
     data->fsr_guard_until_ms = 0;
     data->fsr_touch_baseline_valid = false;
     data->fsr_ready = false;
@@ -3389,6 +3400,7 @@ void iqs9151_test_context_init(void *ctx, const struct device *dev) {
     data->fsr_stable_raw = 0U;
     data->fsr_touch_baseline_raw = 0U;
     data->fsr_touch_baseline_fingers = 0U;
+    data->fsr_touch_baseline_started_ms = 0;
     data->fsr_guard_until_ms = 0;
     data->fsr_touch_baseline_valid = false;
 }

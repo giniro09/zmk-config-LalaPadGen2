@@ -216,6 +216,15 @@ config INPUT_IQS9151_FORCE_RELEASE_THRESHOLD
       Minimum FSR delta from the touch-start baseline required to stay in
       force mode after hysteresis is applied.
 
+config INPUT_IQS9151_FORCE_BASELINE_SETTLE_MS
+    int "IQS9151 FSR baseline settle window (ms)"
+    range 0 200
+    default 60
+    help
+      Short window after touch start during which the FSR baseline is allowed
+      to settle with the normal finger-landing pressure ramp before force
+      detection starts.
+
 config INPUT_IQS9151_FORCE_MOVE_THRESHOLD
     int "IQS9151 force movement threshold"
     range 1 500
