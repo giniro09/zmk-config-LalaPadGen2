@@ -36,7 +36,7 @@
 
 ### 低レベル
 - DRV2605L ベースのハプティックフィードバック
-- D14 の FSR ADC 入力
+- D1 の FSR ADC 入力
 
 ### 入力 / 状態機械
 - Force threshold / release threshold
@@ -54,7 +54,8 @@
 ## 現時点の前提
 - D4 = SDA
 - D5 = SCL
-- D14 = FSR ADC に使用
+- D1 = FSR ADC に使用
+- 右側の既存 D1 matrix 列は D17 へ退避する
 - DRV2605L は既存 SDA / SCL を使って I2C 接続する
 - DRV2605L IN は GND に固定する
 - MCLR は新規ハードウェアに使わない
@@ -66,7 +67,7 @@
 1. 現在のピン使用状況とファームウェア構造を調べる
 2. Force interaction layer を置くのに適切な場所を見つける
 3. DRV2605L 初期化と基本再生 helper を追加する
-4. D14 の FSR 読み取り経路を追加する
+4. D1 の FSR 読み取り経路を追加する
 5. Tap / Force / mode 系イベントを定義する
 6. 1本指 Force の文脈分岐を実装する
 7. Precision Pointer を実装する

@@ -11,7 +11,8 @@
 | ハプティックドライバ | VIN | 3V3 | 電源 |
 | ハプティックドライバ | GND | GND | GND |
 | ハプティックドライバ | IN | GND | I2C 駆動前提で固定 Low |
-| FSR 入力 | ADC node | D14 | ADC 入力 |
+| FSR 入力 | ADC node | D1 | ADC 入力 |
+| 右 matrix 退避 | GPIO | D17 | D1 を FSR に回すため右側 1 列を移す |
 | Piezo 出力 | GPIO / PWM | pin pending | optional / 未確定 |
 
 ## 最小接続図
@@ -23,7 +24,8 @@ flowchart LR
         PGND["GND"]
         PSDA["D4 / SDA"]
         PSCL["D5 / SCL"]
-        PD14["D14 / ADC"]
+        PD1["D1 / ADC"]
+        PD17["D17 / GPIO"]
         PPENDING["Piezo pin pending"]
     end
 
@@ -62,8 +64,8 @@ flowchart LR
     HOM --> LNEG
 
     P3V3 --> FSR
-    FSR --> PD14
-    PD14 --> R10K
+    FSR --> PD1
+    PD1 --> R10K
     R10K --> PGND
 
     PPENDING --> RP
@@ -79,7 +81,7 @@ FSR は単純なスイッチではない。
 ```mermaid
 flowchart LR
     VCC["3V3"] --> F["FSR"]
-    F --> N["ADC node / D14"]
+    F --> N["ADC node / D1"]
     N --> R["10kΩ"]
     R --> G["GND"]
 ```
@@ -90,18 +92,23 @@ flowchart LR
 - D16 は使わない
 - 安全な別ピン候補が確認できるまでは実装前提にしない
 
-## D14 の扱い
-- D14 は FSR 用 ADC 入力として使う前提で進める
-- ADC / 入力用途を基本とし、不要なデジタル出力用途には使わない
-- 現行 firmware target は `seeeduino_xiao_ble` のため `xiao_d 14` では参照できない前提で扱う
-- 実装上は、XIAO BLE Plus の D14 に対応する raw ADC として `ADC7` を使う
+## D1 の扱い
+- D1 は FSR 用 ADC 入力として使う前提で進める
+- 回路は従来の分圧構成をそのまま使い、ADC node の接続先だけ D14 から D1 に変える
+- 現行 firmware target では D1 / P0.03 / AIN1 として素直に扱える
+- 右側では既存の D1 matrix 列を D17 相当の raw GPIO に移し、FSR 用に D1 を空ける
+
+## D17 の扱い
+- D17 は右側実験ビルドで matrix 退避先として使う
+- その代わり、右側の赤 LED は bring-up 中は無効化する
 
 ## D16 の扱い
 - D16 は使わない
 - BAT 系ラベルを持つため、Piezo などの能動出力ピンとしては採用しない
 
 ## ハード確認チェックリスト
-- 現行ファームウェアで `ADC7` 参照が実機の D14 配線と一致しているか確認する
+- 現行ファームウェアで `ADC1` 参照が実機の D1 配線と一致しているか確認する
+- D17 へ移した右側 matrix 列が既存キー挙動を壊していないか確認する
 - DRV2605L 追加後も I2C バスが安定するか確認する
 - DRV2605L 追加後も既存トラックパッド動作が変わらないか確認する
 - 選んだ機械構成で FSR の ADC レンジが安定するか確認する
