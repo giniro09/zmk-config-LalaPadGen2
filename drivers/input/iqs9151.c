@@ -1354,7 +1354,9 @@ static void iqs9151_force_poll_update(struct iqs9151_data *data,
                                       const struct iqs9151_frame *frame) {
     const struct iqs9151_config *cfg = data->dev->config;
     const bool should_poll =
-        cfg->has_fsr && frame->finger_count >= 1U && frame->finger_count <= 3U;
+        cfg->has_fsr &&
+        (IS_ENABLED(CONFIG_INPUT_IQS9151_FSR_DIAG_MODE) ||
+         (frame->finger_count >= 1U && frame->finger_count <= 3U));
 
     if (should_poll) {
         (void)k_work_reschedule(&data->force_poll_work,
@@ -2629,6 +2631,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
                                        int64_t now_ms,
                                        bool cursor_moving) {
     const struct device *dev = data->dev;
+    const bool force_diag_mode = IS_ENABLED(CONFIG_INPUT_IQS9151_FSR_DIAG_MODE);
     uint16_t fsr_raw = 0U;
     int32_t fsr_delta = 0;
     bool released_from_hold = false;
@@ -2643,12 +2646,13 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         return false;
     }
 
-    if (!touching) {
+    if (!touching && !force_diag_mode) {
         data->fsr_touch_baseline_valid = false;
         data->fsr_touch_baseline_fingers = 0U;
     } else if (!data->fsr_touch_baseline_valid ||
-               data->fsr_touch_baseline_fingers != frame->finger_count ||
-               prev_frame->finger_count == 0U) {
+               (!force_diag_mode &&
+                (data->fsr_touch_baseline_fingers != frame->finger_count ||
+                 prev_frame->finger_count == 0U))) {
         data->fsr_touch_baseline_raw = fsr_raw;
         data->fsr_touch_baseline_fingers = frame->finger_count;
         data->fsr_touch_baseline_started_ms = now_ms;
@@ -2673,7 +2677,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     }
     data->force.fsr_delta_raw = (uint16_t)CLAMP(fsr_delta, 0, UINT16_MAX);
 
-    if (!data->force.active && touching && fsr_delta >= FORCE_THRESHOLD) {
+    if (!data->force.active && (touching || force_diag_mode) && fsr_delta >= FORCE_THRESHOLD) {
         uint16_t center_x = 0U;
         uint16_t center_y = 0U;
 
@@ -2687,7 +2691,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         data->force.center_x = center_x;
         data->force.center_y = center_y;
 
-        if (!tapdrag_active) {
+        if (!force_diag_mode && !tapdrag_active) {
             iqs9151_clear_all_click_pending(data);
             if (data->hold_button != 0U && data->hold_owner == IQS9151_HOLD_OWNER_TAPDRAG) {
                 iqs9151_release_hold(data, dev);
@@ -2703,7 +2707,10 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
 
         iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_FORCE);
 
-        if (frame->finger_count == 1U && (moving_context || tapdrag_active)) {
+        if (force_diag_mode) {
+            LOG_INF("FSR diag enter raw=%u baseline=%u delta=%d",
+                    fsr_raw, data->fsr_touch_baseline_raw, fsr_delta);
+        } else if (frame->finger_count == 1U && (moving_context || tapdrag_active)) {
             data->force.precision_active = true;
             data->force.caret_candidate = false;
             iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_PRECISION);
@@ -2716,14 +2723,23 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         return released_from_hold;
     }
 
-    if (!touching || frame->finger_count != data->force.finger_count ||
+    if ((!touching && !force_diag_mode) ||
+        (!force_diag_mode && frame->finger_count != data->force.finger_count) ||
         fsr_delta <= FORCE_RELEASE_THRESHOLD) {
         iqs9151_caret_cancel_repeat(data);
         if (data->force.button_down_sent && data->hold_owner == IQS9151_HOLD_OWNER_FORCE) {
             iqs9151_release_hold(data, dev);
             released_from_hold = true;
         }
+        if (force_diag_mode) {
+            LOG_INF("FSR diag release raw=%u baseline=%u delta=%d",
+                    fsr_raw, data->fsr_touch_baseline_raw, fsr_delta);
+        }
         iqs9151_force_reset(data);
+        return released_from_hold;
+    }
+
+    if (force_diag_mode) {
         return released_from_hold;
     }
 
@@ -3307,6 +3323,9 @@ static int iqs9151_init(const struct device *dev) {
     data->haptic_ready = false;
     (void)iqs9151_fsr_init(data, cfg);
     (void)iqs9151_haptic_init(data, cfg);
+    if (IS_ENABLED(CONFIG_INPUT_IQS9151_FSR_DIAG_MODE) && cfg->has_fsr) {
+        (void)k_work_reschedule(&data->force_poll_work, K_NO_WAIT);
+    }
     gpio_init_callback(&data->gpio_cb, iqs9151_gpio_cb,
                         BIT(cfg->irq_gpio.pin));
     ret = gpio_add_callback(cfg->irq_gpio.port, &data->gpio_cb);

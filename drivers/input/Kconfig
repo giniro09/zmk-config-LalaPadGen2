@@ -36,6 +36,14 @@ config INPUT_IQS9151_SUPPRESS_FORCE_BUTTON_OUTPUT
       output while keeping existing tap/tapdrag key paths active. Use this to
       isolate unexpected drag selection caused by the force interaction path.
 
+config INPUT_IQS9151_FSR_DIAG_MODE
+    bool "Enable IQS9151 FSR-only diagnostic mode"
+    default n
+    help
+      Diagnostic option that lets the FSR trigger the force path without any
+      active trackpad touch. In this mode the driver emits haptics and logs for
+      force enter/release, but does not send Force button down/up.
+
 config INPUT_IQS9151_INIT_PRIORITY
     int "IQS9151 init priority"
     default 80
