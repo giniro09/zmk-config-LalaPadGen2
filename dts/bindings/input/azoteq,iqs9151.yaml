@@ -10,6 +10,10 @@ properties:
     type: phandle-array
     required: true
     description: Interrupt GPIO for IQS9151 driver.
+  force-gpios:
+    type: phandle-array
+    required: false
+    description: Optional digital FSR threshold input used for force interaction.
   io-channels:
     type: phandle-array
     required: false

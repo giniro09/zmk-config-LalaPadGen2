@@ -11,8 +11,7 @@
 | ハプティックドライバ | VIN | 3V3 | 電源 |
 | ハプティックドライバ | GND | GND | GND |
 | ハプティックドライバ | IN | GND | I2C 駆動前提で固定 Low |
-| FSR 入力 | ADC node | D1 | ADC 入力 |
-| 右 matrix 退避 | GPIO | D17 | D1 を FSR に回すため右側 1 列を移す |
+| FSR 入力 | threshold node | D14 | デジタル入力 |
 | Piezo 出力 | GPIO / PWM | pin pending | optional / 未確定 |
 
 ## 最小接続図
@@ -24,8 +23,7 @@ flowchart LR
         PGND["GND"]
         PSDA["D4 / SDA"]
         PSCL["D5 / SCL"]
-        PD1["D1 / ADC"]
-        PD17["D17 / GPIO"]
+        PD14["D14 / Digital In"]
         PPENDING["Piezo pin pending"]
     end
 
@@ -64,8 +62,8 @@ flowchart LR
     HOM --> LNEG
 
     P3V3 --> FSR
-    FSR --> PD1
-    PD1 --> R10K
+    FSR --> PD14
+    PD14 --> R10K
     R10K --> PGND
 
     PPENDING --> RP
@@ -75,13 +73,13 @@ flowchart LR
 
 ## FSR メモ
 FSR は単純なスイッチではない。
-**分圧回路**として扱い、ADC はノード電圧を読む。
+**分圧回路**として扱い、初期案では MCU のデジタルしきい値で 0/1 を読む。
 
 ### FSR 部分回路
 ```mermaid
 flowchart LR
     VCC["3V3"] --> F["FSR"]
-    F --> N["ADC node / D1"]
+    F --> N["threshold node / D14"]
     N --> R["10kΩ"]
     R --> G["GND"]
 ```
@@ -92,23 +90,18 @@ flowchart LR
 - D16 は使わない
 - 安全な別ピン候補が確認できるまでは実装前提にしない
 
-## D1 の扱い
-- D1 は FSR 用 ADC 入力として使う前提で進める
-- 回路は従来の分圧構成をそのまま使い、ADC node の接続先だけ D14 から D1 に変える
-- 現行 firmware target では D1 / P0.03 / AIN1 として素直に扱える
-- 右側では既存の D1 matrix 列を D17 相当の raw GPIO に移し、FSR 用に D1 を空ける
-
-## D17 の扱い
-- D17 は右側実験ビルドで matrix 退避先として使う
-- その代わり、右側の赤 LED は bring-up 中は無効化する
+## D14 の扱い
+- D14 は FSR 用のデジタル入力として使う前提で進める
+- 回路は従来の分圧構成をそのまま使い、抵抗値と機構でデジタルしきい値を跨ぐように調整する
+- 連続値 ADC は使わず、ファームウェアでは 0/1 の Force 入力として扱う
 
 ## D16 の扱い
 - D16 は使わない
 - BAT 系ラベルを持つため、Piezo などの能動出力ピンとしては採用しない
 
 ## ハード確認チェックリスト
-- 現行ファームウェアで `ADC1` 参照が実機の D1 配線と一致しているか確認する
-- D17 へ移した右側 matrix 列が既存キー挙動を壊していないか確認する
+- 現行ファームウェアで D14 のデジタル入力が実機の FSR 配線と一致しているか確認する
+- 抵抗値と機構の組み合わせで、通常時は安定 Low、強押しで安定 High になるか確認する
 - DRV2605L 追加後も I2C バスが安定するか確認する
 - DRV2605L 追加後も既存トラックパッド動作が変わらないか確認する
 - 選んだ機械構成で FSR の ADC レンジが安定するか確認する

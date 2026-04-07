@@ -120,8 +120,11 @@ struct iqs9151_io_channel_config {
 struct iqs9151_config {
     struct i2c_dt_spec i2c;
     struct gpio_dt_spec irq_gpio;
+    struct gpio_dt_spec force_gpio;
     struct iqs9151_io_channel_config fsr_io;
     struct i2c_dt_spec haptic;
+    bool has_force_gpio;
+    bool has_fsr_adc;
     bool has_fsr;
     bool has_haptic;
 };
@@ -476,6 +479,22 @@ static int iqs9151_fsr_init(struct iqs9151_data *data, const struct iqs9151_conf
         return 0;
     }
 
+    if (cfg->has_force_gpio) {
+        if (!device_is_ready(cfg->force_gpio.port)) {
+            LOG_WRN("FSR GPIO device is not ready");
+            return -ENODEV;
+        }
+
+        const int ret = gpio_pin_configure_dt(&cfg->force_gpio, GPIO_INPUT);
+        if (ret != 0) {
+            LOG_WRN("FSR GPIO configure failed (%d)", ret);
+            return ret;
+        }
+
+        data->fsr_ready = true;
+        return 0;
+    }
+
     if (data->fsr_adc == NULL || !device_is_ready(data->fsr_adc)) {
         LOG_WRN("FSR ADC device is not ready");
         return -ENODEV;
@@ -513,21 +532,33 @@ static int iqs9151_fsr_init(struct iqs9151_data *data, const struct iqs9151_conf
 }
 
 static bool iqs9151_read_fsr(struct iqs9151_data *data, uint16_t *raw_out) {
+    const struct iqs9151_config *cfg = data->dev->config;
+
     if (!data->fsr_ready || raw_out == NULL) {
         return false;
     }
 
-    int ret = adc_read(data->fsr_adc, &data->fsr_as);
-    data->fsr_as.calibrate = false;
-    if (ret != 0) {
-        LOG_WRN("FSR ADC read failed (%d)", ret);
-        return false;
+    if (cfg->has_force_gpio) {
+        const int value = gpio_pin_get_dt(&cfg->force_gpio);
+        if (value < 0) {
+            LOG_WRN("FSR GPIO read failed (%d)", value);
+            return false;
+        }
+        *raw_out = (value != 0) ? UINT16_MAX : 0U;
+    } else {
+        int ret = adc_read(data->fsr_adc, &data->fsr_as);
+        data->fsr_as.calibrate = false;
+        if (ret != 0) {
+            LOG_WRN("FSR ADC read failed (%d)", ret);
+            return false;
+        }
+
+        *raw_out = data->fsr_sample_buffer;
     }
 
     if (k_uptime_get() < data->fsr_guard_until_ms) {
         *raw_out = data->fsr_stable_raw;
     } else {
-        *raw_out = data->fsr_sample_buffer;
         data->fsr_stable_raw = *raw_out;
     }
     data->force.fsr_raw = *raw_out;
@@ -536,6 +567,18 @@ static bool iqs9151_read_fsr(struct iqs9151_data *data, uint16_t *raw_out) {
 
 static bool iqs9151_read_fsr_diag_scan(struct iqs9151_data *data, uint16_t *raw_out,
                                        uint8_t *channel_out) {
+    const struct iqs9151_config *cfg = data->dev->config;
+
+    if (cfg->has_force_gpio) {
+        uint16_t raw = 0U;
+        if (!iqs9151_read_fsr(data, &raw)) {
+            return false;
+        }
+        *raw_out = raw;
+        *channel_out = 0xFFU;
+        return true;
+    }
+
     if (data->fsr_adc == NULL || !device_is_ready(data->fsr_adc) || raw_out == NULL ||
         channel_out == NULL) {
         return false;
@@ -3601,8 +3644,14 @@ void iqs9151_test_force_pinch_session(void *ctx, bool active) {
     static const struct iqs9151_config iqs9151_config_##inst = {                             \
         .i2c = I2C_DT_SPEC_INST_GET(inst),                                                   \
         .irq_gpio = GPIO_DT_SPEC_INST_GET(inst, irq_gpios),                                  \
-        .has_fsr = DT_INST_NODE_HAS_PROP(inst, io_channels),                                 \
+        .has_force_gpio = DT_INST_NODE_HAS_PROP(inst, force_gpios),                          \
+        .has_fsr_adc = DT_INST_NODE_HAS_PROP(inst, io_channels),                             \
+        .has_fsr = DT_INST_NODE_HAS_PROP(inst, io_channels) ||                               \
+                   DT_INST_NODE_HAS_PROP(inst, force_gpios),                                 \
         .has_haptic = DT_INST_NODE_HAS_PROP(inst, haptic_device),                            \
+        COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, force_gpios),                                \
+                    (.force_gpio = GPIO_DT_SPEC_INST_GET(inst, force_gpios),),               \
+                    ())                                                                       \
         COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, io_channels),                                \
                     (.fsr_io = {.channel = DT_IO_CHANNELS_INPUT_BY_IDX(DT_DRV_INST(inst),    \
                                                                        0)},),                \
