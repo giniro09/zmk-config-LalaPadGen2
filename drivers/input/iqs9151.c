@@ -2646,34 +2646,46 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         return false;
     }
 
-    if (!touching && !force_diag_mode) {
-        data->fsr_touch_baseline_valid = false;
+    if (force_diag_mode) {
+        /*
+         * In FSR-only diagnosis, bypass touch-coupled baseline logic and use
+         * the absolute raw ADC value directly. This isolates ADC/haptic wiring
+         * from trackpad touch-state interactions.
+         */
+        data->fsr_touch_baseline_raw = 0U;
         data->fsr_touch_baseline_fingers = 0U;
-    } else if (!data->fsr_touch_baseline_valid ||
-               (!force_diag_mode &&
-                (data->fsr_touch_baseline_fingers != frame->finger_count ||
-                 prev_frame->finger_count == 0U))) {
-        data->fsr_touch_baseline_raw = fsr_raw;
-        data->fsr_touch_baseline_fingers = frame->finger_count;
         data->fsr_touch_baseline_started_ms = now_ms;
         data->fsr_touch_baseline_valid = true;
-    } else if (!data->force.active &&
-               (now_ms - data->fsr_touch_baseline_started_ms) < FORCE_BASELINE_SETTLE_MS) {
-        /*
-         * Let the initial touch pressure settle for a short window so the
-         * normal "finger landing" ramp does not immediately count as force.
-         */
-        data->fsr_touch_baseline_raw = fsr_raw;
-    } else if (!data->force.active && fsr_raw < data->fsr_touch_baseline_raw) {
-        /*
-         * Before force engages, allow the baseline to settle downward so small
-         * ADC drift does not immediately count as intentional force.
-         */
-        data->fsr_touch_baseline_raw = fsr_raw;
-    }
+        fsr_delta = fsr_raw;
+    } else {
+        if (!touching) {
+            data->fsr_touch_baseline_valid = false;
+            data->fsr_touch_baseline_fingers = 0U;
+        } else if (!data->fsr_touch_baseline_valid ||
+                   data->fsr_touch_baseline_fingers != frame->finger_count ||
+                   prev_frame->finger_count == 0U) {
+            data->fsr_touch_baseline_raw = fsr_raw;
+            data->fsr_touch_baseline_fingers = frame->finger_count;
+            data->fsr_touch_baseline_started_ms = now_ms;
+            data->fsr_touch_baseline_valid = true;
+        } else if (!data->force.active &&
+                   (now_ms - data->fsr_touch_baseline_started_ms) < FORCE_BASELINE_SETTLE_MS) {
+            /*
+             * Let the initial touch pressure settle for a short window so the
+             * normal "finger landing" ramp does not immediately count as force.
+             */
+            data->fsr_touch_baseline_raw = fsr_raw;
+        } else if (!data->force.active && fsr_raw < data->fsr_touch_baseline_raw) {
+            /*
+             * Before force engages, allow the baseline to settle downward so small
+             * ADC drift does not immediately count as intentional force.
+             */
+            data->fsr_touch_baseline_raw = fsr_raw;
+        }
 
-    if (data->fsr_touch_baseline_valid && fsr_raw > data->fsr_touch_baseline_raw) {
-        fsr_delta = (int32_t)fsr_raw - (int32_t)data->fsr_touch_baseline_raw;
+        if (data->fsr_touch_baseline_valid && fsr_raw > data->fsr_touch_baseline_raw) {
+            fsr_delta = (int32_t)fsr_raw - (int32_t)data->fsr_touch_baseline_raw;
+        }
     }
     data->force.fsr_delta_raw = (uint16_t)CLAMP(fsr_delta, 0, UINT16_MAX);
 
