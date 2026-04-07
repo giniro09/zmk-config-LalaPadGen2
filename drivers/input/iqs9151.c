@@ -2863,6 +2863,18 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
         return;
     }
 
+    if (IS_ENABLED(CONFIG_INPUT_IQS9151_FSR_DIAG_MODE)) {
+        (void)iqs9151_update_force_state(data, frame, &prev_frame, now_ms, false);
+        LOG_DBG("fsr_diag_state: raw=%u delta=%u baseline=%u active=%d",
+                data->force.fsr_raw,
+                data->force.fsr_delta_raw,
+                data->fsr_touch_baseline_raw,
+                data->force.active);
+        iqs9151_force_poll_update(data, frame);
+        iqs9151_update_prev_frame(data, frame, &prev_frame);
+        return;
+    }
+
     released_from_hold =
         iqs9151_update_gesture_sessions(data, frame, &prev_frame, &two_result);
     suppress_cursor_tail =
