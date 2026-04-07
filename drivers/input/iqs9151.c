@@ -1346,6 +1346,27 @@ static void iqs9151_caret_set_repeat_code(struct iqs9151_data *data, uint16_t co
 static void iqs9151_force_poll_work_cb(struct k_work *work) {
     struct k_work_delayable *dwork = k_work_delayable_from_work(work);
     struct iqs9151_data *data = CONTAINER_OF(dwork, struct iqs9151_data, force_poll_work);
+    uint16_t fsr_raw = 0U;
+
+    if (IS_ENABLED(CONFIG_INPUT_IQS9151_FSR_DIAG_MODE)) {
+        if (iqs9151_read_fsr(data, &fsr_raw)) {
+            data->force.fsr_raw = fsr_raw;
+            data->force.fsr_delta_raw = fsr_raw;
+
+            if (!data->force.active && fsr_raw >= FORCE_THRESHOLD) {
+                data->force.active = true;
+                LOG_INF("FSR direct diag enter raw=%u", fsr_raw);
+                iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_FORCE);
+            } else if (data->force.active && fsr_raw <= FORCE_RELEASE_THRESHOLD) {
+                data->force.active = false;
+                LOG_INF("FSR direct diag release raw=%u", fsr_raw);
+            }
+        }
+
+        (void)k_work_reschedule(&data->force_poll_work,
+                                K_MSEC(FORCE_TOUCH_POLL_INTERVAL_MS));
+        return;
+    }
 
     k_work_submit(&data->work);
 }
