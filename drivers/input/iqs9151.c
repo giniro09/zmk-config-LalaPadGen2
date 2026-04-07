@@ -534,6 +534,57 @@ static bool iqs9151_read_fsr(struct iqs9151_data *data, uint16_t *raw_out) {
     return true;
 }
 
+static bool iqs9151_read_fsr_diag_scan(struct iqs9151_data *data, uint16_t *raw_out,
+                                       uint8_t *channel_out) {
+    if (data->fsr_adc == NULL || !device_is_ready(data->fsr_adc) || raw_out == NULL ||
+        channel_out == NULL) {
+        return false;
+    }
+
+#ifdef CONFIG_ADC_NRFX_SAADC
+    uint16_t best_raw = 0U;
+    uint8_t best_channel = 0U;
+
+    for (uint8_t ch = 0U; ch < 8U; ch++) {
+        uint16_t sample = 0U;
+        const struct adc_channel_cfg acc = {
+            .channel_id = ch,
+            .gain = ADC_GAIN_1_6,
+            .reference = ADC_REF_INTERNAL,
+            .acquisition_time = ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 40),
+            .input_positive = IQS9151_NRF_SAADC_AIN_BASE + ch,
+        };
+        struct adc_sequence as = {
+            .channels = BIT(ch),
+            .buffer = &sample,
+            .buffer_size = sizeof(sample),
+            .oversampling = 2,
+            .calibrate = false,
+            .resolution = 12,
+        };
+
+        if (adc_channel_setup(data->fsr_adc, &acc) != 0) {
+            continue;
+        }
+        if (adc_read(data->fsr_adc, &as) != 0) {
+            continue;
+        }
+
+        if (sample >= best_raw) {
+            best_raw = sample;
+            best_channel = ch;
+        }
+    }
+
+    *raw_out = best_raw;
+    *channel_out = best_channel;
+    data->force.fsr_raw = best_raw;
+    return true;
+#else
+    return false;
+#endif
+}
+
 static const uint8_t iqs9151_alp_compensation[] = {
     ALP_COMPENSATION_RX0_0,  ALP_COMPENSATION_RX0_1,  ALP_COMPENSATION_RX1_0,
     ALP_COMPENSATION_RX1_1,  ALP_COMPENSATION_RX2_0,  ALP_COMPENSATION_RX2_1,
@@ -1349,17 +1400,19 @@ static void iqs9151_force_poll_work_cb(struct k_work *work) {
     uint16_t fsr_raw = 0U;
 
     if (IS_ENABLED(CONFIG_INPUT_IQS9151_FSR_DIAG_MODE)) {
-        if (iqs9151_read_fsr(data, &fsr_raw)) {
+        uint8_t fsr_channel = 0U;
+
+        if (iqs9151_read_fsr_diag_scan(data, &fsr_raw, &fsr_channel)) {
             data->force.fsr_raw = fsr_raw;
             data->force.fsr_delta_raw = fsr_raw;
 
             if (!data->force.active && fsr_raw >= FORCE_THRESHOLD) {
                 data->force.active = true;
-                LOG_INF("FSR direct diag enter raw=%u", fsr_raw);
+                LOG_INF("FSR direct diag enter ch=%u raw=%u", fsr_channel, fsr_raw);
                 iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_FORCE);
             } else if (data->force.active && fsr_raw <= FORCE_RELEASE_THRESHOLD) {
                 data->force.active = false;
-                LOG_INF("FSR direct diag release raw=%u", fsr_raw);
+                LOG_INF("FSR direct diag release ch=%u raw=%u", fsr_channel, fsr_raw);
             }
         }
 
