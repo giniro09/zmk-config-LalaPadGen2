@@ -29,7 +29,7 @@
 };
 
 &iqs9151 {
-    /* XIAO BLE Plus D14 is routed as raw SAADC channel 7 (P0.09). */
+    /* Temporary SAADC placeholder while XIAO BLE Plus FSR routing is under verification. */
     io-channels = <&adc 7>;
     haptic-device = <&drv2605l>;
 };
