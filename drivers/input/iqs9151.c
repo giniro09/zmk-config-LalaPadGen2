@@ -112,6 +112,7 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define DRV2605L_EFFECT_PRECISION 10
 #define DRV2605L_EFFECT_CARET 14
 #define IQS9151_NRF_SAADC_AIN_BASE 1
+#define IQS9151_CARET_MAX_STEPS_PER_FRAME 4
 
 struct iqs9151_io_channel_config {
     uint8_t channel;
@@ -1436,6 +1437,32 @@ static void iqs9151_caret_set_repeat_code(struct iqs9151_data *data, uint16_t co
     data->force.repeat_code = code;
     if (code != 0U) {
         (void)k_work_reschedule(&data->caret_repeat_work, K_MSEC(CARET_REPEAT_INITIAL_MS));
+    }
+}
+
+static void iqs9151_caret_emit_motion_steps(struct iqs9151_data *data, const struct device *dev,
+                                            int32_t *dx, int32_t *dy) {
+    uint8_t steps = 0U;
+
+    while (steps < IQS9151_CARET_MAX_STEPS_PER_FRAME) {
+        const int32_t abs_dx = iqs9151_abs32(*dx);
+        const int32_t abs_dy = iqs9151_abs32(*dy);
+        uint16_t code = 0U;
+
+        if (MAX(abs_dx, abs_dy) < CARET_DEADZONE) {
+            break;
+        }
+
+        if (abs_dx >= abs_dy) {
+            code = (*dx < 0) ? INPUT_KEY_LEFT : INPUT_KEY_RIGHT;
+            *dx += (*dx < 0) ? CARET_DEADZONE : -CARET_DEADZONE;
+        } else {
+            code = (*dy < 0) ? INPUT_KEY_UP : INPUT_KEY_DOWN;
+            *dy += (*dy < 0) ? CARET_DEADZONE : -CARET_DEADZONE;
+        }
+
+        iqs9151_emit_key_tap(dev, code);
+        steps++;
     }
 }
 
@@ -2933,20 +2960,21 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     if (data->force.caret_active) {
         uint16_t finger_x = data->force.center_x;
         uint16_t finger_y = data->force.center_y;
-        const uint16_t next_code =
-            (iqs9151_get_finger1_xy(frame, prev_frame, &finger_x, &finger_y))
-                ? iqs9151_caret_code_from_delta((int32_t)finger_x - (int32_t)data->force.center_x,
-                                               (int32_t)finger_y - (int32_t)data->force.center_y)
-                : 0U;
+        if (iqs9151_get_finger1_xy(frame, prev_frame, &finger_x, &finger_y)) {
+            int32_t dx = (int32_t)finger_x - (int32_t)data->force.center_x;
+            int32_t dy = (int32_t)finger_y - (int32_t)data->force.center_y;
 
-        data->force.caret_dx = (int32_t)finger_x - (int32_t)data->force.center_x;
-        data->force.caret_dy = (int32_t)finger_y - (int32_t)data->force.center_y;
-
-        if (next_code == 0U) {
             iqs9151_caret_cancel_repeat(data);
-        } else if (data->force.repeat_code != next_code) {
-            iqs9151_emit_key_tap(dev, next_code);
-            iqs9151_caret_set_repeat_code(data, next_code);
+            iqs9151_caret_emit_motion_steps(data, dev, &dx, &dy);
+
+            data->force.caret_dx = dx;
+            data->force.caret_dy = dy;
+            data->force.center_x = (uint16_t)((int32_t)finger_x - dx);
+            data->force.center_y = (uint16_t)((int32_t)finger_y - dy);
+        } else {
+            iqs9151_caret_cancel_repeat(data);
+            data->force.caret_dx = 0;
+            data->force.caret_dy = 0;
         }
     }
 
