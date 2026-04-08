@@ -1,5 +1,13 @@
 #include "lalapadgen2.dtsi"
 
+&xiao_i2c {
+    drv2605l: drv2605l@5a {
+        compatible = "ti,drv2605l";
+        reg = <0x5a>;
+        status = "okay";
+    };
+};
+
 &kscan0 {
     col-gpios
         = <&gpio0 19 GPIO_ACTIVE_HIGH>
@@ -18,4 +26,10 @@
 &trackpad_split_R {
     status = "disabled";
     device = <&iqs9151>;
+};
+
+&iqs9151 {
+    /* D14 / P0.09 is used as a digital threshold input for the FSR divider. */
+    force-gpios = <&gpio0 9 GPIO_ACTIVE_HIGH>;
+    haptic-device = <&drv2605l>;
 };
