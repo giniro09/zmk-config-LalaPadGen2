@@ -2790,6 +2790,8 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         touching && frame->finger_count == 1U &&
         (cursor_moving || iqs9151_abs32(frame->rel_x) >= FORCE_MOVE_THRESHOLD ||
          iqs9151_abs32(frame->rel_y) >= FORCE_MOVE_THRESHOLD);
+    const bool defer_static_one_finger_click =
+        !force_diag_mode && frame->finger_count == 1U && !moving_context && !tapdrag_active;
 
     if (!iqs9151_read_fsr(data, &fsr_raw)) {
         return false;
@@ -2865,7 +2867,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
                 iqs9151_motion_history_reset(&data->cursor_motion_history);
             }
 
-            if (data->force.button != 0U &&
+            if (!defer_static_one_finger_click && data->force.button != 0U &&
                 iqs9151_emit_hold_press_owned(data, dev, data->force.button,
                                              IQS9151_HOLD_OWNER_FORCE)) {
                 data->force.button_down_sent = true;
@@ -2897,6 +2899,9 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         if (data->force.button_down_sent && data->hold_owner == IQS9151_HOLD_OWNER_FORCE) {
             iqs9151_release_hold(data, dev);
             released_from_hold = true;
+        } else if (!force_diag_mode && data->force.finger_count == 1U && !data->force.caret_active &&
+                   !data->force.precision_active && data->force.button != 0U) {
+            (void)iqs9151_emit_click(data, dev, data->force.button);
         }
         if (force_diag_mode) {
             LOG_INF("FSR diag release raw=%u baseline=%u delta=%d",
@@ -2931,6 +2936,11 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         (cursor_moving || abs_x >= FORCE_MOVE_THRESHOLD || abs_y >= FORCE_MOVE_THRESHOLD)) {
         data->force.caret_candidate = false;
         data->force.precision_active = true;
+        if (!data->force.button_down_sent && !data->force.overlay_only && data->force.button != 0U &&
+            iqs9151_emit_hold_press_owned(data, dev, data->force.button,
+                                         IQS9151_HOLD_OWNER_FORCE)) {
+            data->force.button_down_sent = true;
+        }
         iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_PRECISION);
         return released_from_hold;
     }
