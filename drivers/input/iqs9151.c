@@ -544,7 +544,7 @@ static bool iqs9151_read_fsr(struct iqs9151_data *data, uint16_t *raw_out) {
             LOG_WRN("FSR GPIO read failed (%d)", value);
             return false;
         }
-        *raw_out = (value != 0) ? UINT16_MAX : 0U;
+        *raw_out = (value != 0) ? FORCE_THRESHOLD : 0U;
     } else {
         int ret = adc_read(data->fsr_adc, &data->fsr_as);
         data->fsr_as.calibrate = false;
@@ -1400,8 +1400,10 @@ static void iqs9151_emit_key_tap(const struct device *dev, uint16_t code) {
 }
 
 static int32_t iqs9151_caret_repeat_delay_ms(const struct iqs9151_data *data) {
+    const struct iqs9151_config *cfg = data->dev->config;
     const int32_t force_bonus =
-        MAX(0, (int32_t)data->force.fsr_delta_raw - FORCE_THRESHOLD) / 80;
+        cfg->has_force_gpio ? 0
+                            : MAX(0, (int32_t)data->force.fsr_delta_raw - FORCE_THRESHOLD) / 80;
     const int32_t move_bonus =
         MAX(iqs9151_abs32(data->force.caret_dx), iqs9151_abs32(data->force.caret_dy)) / 80;
     return CLAMP(CARET_REPEAT_BASE_MS - force_bonus - move_bonus, 30, CARET_REPEAT_BASE_MS);
@@ -2830,6 +2832,12 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
                 released_from_hold = true;
             }
 
+            if (!moving_context) {
+                iqs9151_inertia_cancel(&data->inertia_cursor, &data->inertia_cursor_work);
+                iqs9151_ema_reset(&data->cursor_ema_x_fp, &data->cursor_ema_y_fp);
+                iqs9151_motion_history_reset(&data->cursor_motion_history);
+            }
+
             if (data->force.button != 0U &&
                 iqs9151_emit_hold_press_owned(data, dev, data->force.button,
                                              IQS9151_HOLD_OWNER_FORCE)) {
@@ -3015,7 +3023,9 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
     released_from_hold =
         iqs9151_update_force_state(data, frame, &prev_frame, now_ms, cursor_moving) ||
         released_from_hold;
-    suppress_cursor_tail = suppress_cursor_tail || data->force.caret_active;
+    suppress_cursor_tail =
+        suppress_cursor_tail || data->force.caret_active ||
+        (data->force.active && !data->force.precision_active);
 
     if (frame->finger_count == 3U || data->three_active) {
         iqs9151_inertia_cancel(&data->inertia_scroll, &data->inertia_scroll_work);
@@ -3030,8 +3040,9 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
         iqs9151_inertia_cancel(&data->inertia_cursor, &data->inertia_cursor_work);
         iqs9151_motion_history_reset(&data->cursor_motion_history);
     }
-    if (data->force.precision_active || data->force.caret_active) {
+    if (data->force.active) {
         iqs9151_inertia_cancel(&data->inertia_cursor, &data->inertia_cursor_work);
+        iqs9151_ema_reset(&data->cursor_ema_x_fp, &data->cursor_ema_y_fp);
         iqs9151_motion_history_reset(&data->cursor_motion_history);
     }
 
