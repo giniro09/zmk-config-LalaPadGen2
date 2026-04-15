@@ -104,8 +104,35 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define DRV2605L_REG_WAVESEQ1 0x04
 #define DRV2605L_REG_WAVESEQ2 0x05
 #define DRV2605L_REG_GO 0x0C
+#define DRV2605L_REG_RATED_VOLTAGE 0x16
+#define DRV2605L_REG_OD_CLAMP 0x17
+#define DRV2605L_REG_FEEDBACK_CONTROL 0x1A
+#define DRV2605L_REG_CONTROL1 0x1B
+#define DRV2605L_REG_CONTROL2 0x1C
+#define DRV2605L_REG_CONTROL3 0x1D
+#define DRV2605L_REG_CONTROL4 0x1E
+#define DRV2605L_REG_LRA_OPEN_LOOP_PERIOD 0x20
 #define DRV2605L_MODE_INTERNAL_TRIGGER 0x00
 #define DRV2605L_LIBRARY_LRA 0x06
+
+/*
+ * First-pass DRV2605L tuning for Vybronics VG1040003D (10 mm coin LRA):
+ * - rated voltage: 2.5 Vrms
+ * - resonant frequency: 170 Hz
+ *
+ * These values are based on TI DRV2605L LRA tuning guidance and scaled from
+ * TI forum examples for 160-175 Hz LRAs. We intentionally keep playback in the
+ * internal-trigger library mode for compatibility, but provide actuator-aware
+ * rated/overdrive/feedback settings instead of relying on defaults.
+ */
+#define DRV2605L_VG1040003D_RATED_VOLTAGE 0x68
+#define DRV2605L_VG1040003D_OD_CLAMP 0xA8
+#define DRV2605L_VG1040003D_FEEDBACK_CONTROL 0xB6
+#define DRV2605L_VG1040003D_CONTROL1 0x1B
+#define DRV2605L_VG1040003D_CONTROL2 0x75
+#define DRV2605L_VG1040003D_CONTROL3 0x8C
+#define DRV2605L_VG1040003D_CONTROL4 0x40
+#define DRV2605L_VG1040003D_LRA_PERIOD 0x3C
 
 #define DRV2605L_EFFECT_TAP 4
 #define DRV2605L_EFFECT_FORCE 14
@@ -464,6 +491,38 @@ static int iqs9151_haptic_init(struct iqs9151_data *data, const struct iqs9151_c
     int ret = iqs9151_drv2605l_write(cfg, DRV2605L_REG_MODE, DRV2605L_MODE_INTERNAL_TRIGGER);
     if (ret == 0) {
         ret = iqs9151_drv2605l_write(cfg, DRV2605L_REG_LIBRARY, DRV2605L_LIBRARY_LRA);
+    }
+    if (ret == 0) {
+        ret = iqs9151_drv2605l_write(cfg, DRV2605L_REG_RATED_VOLTAGE,
+                                     DRV2605L_VG1040003D_RATED_VOLTAGE);
+    }
+    if (ret == 0) {
+        ret = iqs9151_drv2605l_write(cfg, DRV2605L_REG_OD_CLAMP,
+                                     DRV2605L_VG1040003D_OD_CLAMP);
+    }
+    if (ret == 0) {
+        ret = iqs9151_drv2605l_write(cfg, DRV2605L_REG_FEEDBACK_CONTROL,
+                                     DRV2605L_VG1040003D_FEEDBACK_CONTROL);
+    }
+    if (ret == 0) {
+        ret = iqs9151_drv2605l_write(cfg, DRV2605L_REG_CONTROL1,
+                                     DRV2605L_VG1040003D_CONTROL1);
+    }
+    if (ret == 0) {
+        ret = iqs9151_drv2605l_write(cfg, DRV2605L_REG_CONTROL2,
+                                     DRV2605L_VG1040003D_CONTROL2);
+    }
+    if (ret == 0) {
+        ret = iqs9151_drv2605l_write(cfg, DRV2605L_REG_CONTROL3,
+                                     DRV2605L_VG1040003D_CONTROL3);
+    }
+    if (ret == 0) {
+        ret = iqs9151_drv2605l_write(cfg, DRV2605L_REG_CONTROL4,
+                                     DRV2605L_VG1040003D_CONTROL4);
+    }
+    if (ret == 0) {
+        ret = iqs9151_drv2605l_write(cfg, DRV2605L_REG_LRA_OPEN_LOOP_PERIOD,
+                                     DRV2605L_VG1040003D_LRA_PERIOD);
     }
 
     if (ret != 0) {
