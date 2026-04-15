@@ -98,6 +98,8 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define CARET_REPEAT_BASE_MS CONFIG_INPUT_IQS9151_CARET_REPEAT_BASE_MS
 #define HAPTIC_FSR_GUARD_MS CONFIG_INPUT_IQS9151_HAPTIC_FSR_GUARD_MS
 #define FORCE_TOUCH_POLL_INTERVAL_MS 20
+#define TAP_REPEAT_DIAG_COUNT CONFIG_INPUT_IQS9151_TAP_REPEAT_DIAG_COUNT
+#define TAP_REPEAT_DIAG_INTERVAL_MS CONFIG_INPUT_IQS9151_TAP_REPEAT_DIAG_INTERVAL_MS
 
 #define DRV2605L_REG_MODE 0x01
 #define DRV2605L_REG_LIBRARY 0x03
@@ -288,6 +290,7 @@ struct iqs9151_data {
     struct k_work_delayable inertia_cursor_work;
     struct k_work_delayable caret_repeat_work;
     struct k_work_delayable force_poll_work;
+    struct k_work_delayable tap_repeat_work;
     struct iqs9151_inertia_state inertia_scroll;
     struct iqs9151_inertia_state inertia_cursor;
     int32_t scroll_ema_x_fp;
@@ -342,12 +345,14 @@ struct iqs9151_data {
     struct iqs9151_finger_history_entry finger_history[IQS9151_FINGER_HISTORY_SIZE];
     uint8_t finger_history_head;
     uint8_t finger_history_count;
+    uint8_t tap_repeat_remaining;
 };
 
 static atomic_t iqs9151_saved_cursor_inertia_enabled =
     ATOMIC_INIT(IS_ENABLED(CONFIG_INPUT_IQS9151_CURSOR_INERTIA_ENABLE));
 
 static void iqs9151_cursor_inertia_save_cb(struct k_work *work);
+static void iqs9151_tap_repeat_work_cb(struct k_work *work);
 
 #if defined(CONFIG_ZMK_SETTINGS_SAVE_DEBOUNCE)
 K_WORK_DELAYABLE_DEFINE(iqs9151_cursor_inertia_save_work, iqs9151_cursor_inertia_save_cb);
@@ -475,6 +480,22 @@ static void iqs9151_haptic_play_effect(struct iqs9151_data *data, uint8_t effect
      */
     if (data->fsr_ready && HAPTIC_FSR_GUARD_MS > 0) {
         data->fsr_guard_until_ms = k_uptime_get() + HAPTIC_FSR_GUARD_MS;
+    }
+}
+
+static void iqs9151_haptic_play_tap(struct iqs9151_data *data) {
+    iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
+
+    if (!IS_ENABLED(CONFIG_INPUT_IQS9151_TAP_REPEAT_DIAG)) {
+        return;
+    }
+
+    (void)k_work_cancel_delayable(&data->tap_repeat_work);
+    data->tap_repeat_remaining =
+        (TAP_REPEAT_DIAG_COUNT > 0) ? (uint8_t)(TAP_REPEAT_DIAG_COUNT - 1) : 0U;
+
+    if (data->tap_repeat_remaining > 0U) {
+        (void)k_work_reschedule(&data->tap_repeat_work, K_MSEC(TAP_REPEAT_DIAG_INTERVAL_MS));
     }
 }
 
@@ -1558,6 +1579,22 @@ static void iqs9151_force_poll_work_cb(struct k_work *work) {
     k_work_submit(&data->work);
 }
 
+static void iqs9151_tap_repeat_work_cb(struct k_work *work) {
+    struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+    struct iqs9151_data *data = CONTAINER_OF(dwork, struct iqs9151_data, tap_repeat_work);
+
+    if (data->tap_repeat_remaining == 0U) {
+        return;
+    }
+
+    iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
+    data->tap_repeat_remaining--;
+
+    if (data->tap_repeat_remaining > 0U) {
+        (void)k_work_reschedule(&data->tap_repeat_work, K_MSEC(TAP_REPEAT_DIAG_INTERVAL_MS));
+    }
+}
+
 static void iqs9151_force_poll_update(struct iqs9151_data *data,
                                       const struct iqs9151_frame *frame) {
     const struct iqs9151_config *cfg = data->dev->config;
@@ -1762,7 +1799,7 @@ static bool iqs9151_one_finger_update(struct iqs9151_data *data,
         if (second_tap_detected &&
             IS_ENABLED(CONFIG_INPUT_IQS9151_1F_TAP_ENABLE)) {
             (void)iqs9151_emit_click(data, dev, INPUT_BTN_0);
-            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
+            iqs9151_haptic_play_tap(data);
         }
         iqs9151_one_finger_reset(state);
         return released_from_hold;
@@ -1788,13 +1825,13 @@ static bool iqs9151_one_finger_update(struct iqs9151_data *data,
     if (tap_detected &&
         tap_emitted &&
         IS_ENABLED(CONFIG_INPUT_IQS9151_1F_PRESSHOLD_ENABLE)) {
-        iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
+        iqs9151_haptic_play_tap(data);
         data->one_finger_click_pending = true;
         data->one_finger_click_pending_ms = now_ms;
         k_work_reschedule(&data->one_finger_click_work,
                           K_MSEC(ONE_FINGER_CLICK_HOLD_MAX_MS));
     } else if (tap_detected && tap_emitted) {
-        iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
+        iqs9151_haptic_play_tap(data);
     } else if (frame->finger_count != 0U) {
         iqs9151_clear_one_finger_click_pending(data);
         (void)k_work_cancel_delayable(&data->one_finger_click_work);
@@ -1990,7 +2027,7 @@ static void iqs9151_two_finger_update(struct iqs9151_data *data,
         if (second_tap_detected &&
             IS_ENABLED(CONFIG_INPUT_IQS9151_2F_TAP_ENABLE)) {
             (void)iqs9151_emit_click(data, dev, INPUT_BTN_1);
-            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
+            iqs9151_haptic_play_tap(data);
         }
 
         iqs9151_two_finger_reset(state);
@@ -2025,13 +2062,13 @@ static void iqs9151_two_finger_update(struct iqs9151_data *data,
         if (tap_detected &&
             tap_emitted &&
             IS_ENABLED(CONFIG_INPUT_IQS9151_2F_PRESSHOLD_ENABLE)) {
-            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
+            iqs9151_haptic_play_tap(data);
             data->two_finger_click_pending = true;
             data->two_finger_click_pending_ms = now_ms;
             k_work_reschedule(&data->two_finger_click_work,
                               K_MSEC(TWO_FINGER_CLICK_HOLD_MAX_MS));
         } else if (tap_detected && tap_emitted) {
-            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
+            iqs9151_haptic_play_tap(data);
         }
 
         iqs9151_two_finger_reset(state);
@@ -2074,13 +2111,13 @@ static void iqs9151_two_finger_update(struct iqs9151_data *data,
     if (tap_detected &&
         tap_emitted &&
         IS_ENABLED(CONFIG_INPUT_IQS9151_2F_PRESSHOLD_ENABLE)) {
-        iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
+        iqs9151_haptic_play_tap(data);
         data->two_finger_click_pending = true;
         data->two_finger_click_pending_ms = now_ms;
         k_work_reschedule(&data->two_finger_click_work,
                           K_MSEC(TWO_FINGER_CLICK_HOLD_MAX_MS));
     } else if (tap_detected && tap_emitted) {
-        iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
+        iqs9151_haptic_play_tap(data);
     }
 
     iqs9151_two_finger_reset(state);
@@ -2242,7 +2279,7 @@ static bool iqs9151_three_finger_update(struct iqs9151_data *data,
         if (second_tap_detected &&
             IS_ENABLED(CONFIG_INPUT_IQS9151_3F_TAP_ENABLE)) {
             (void)iqs9151_emit_click(data, dev, INPUT_BTN_2);
-            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
+            iqs9151_haptic_play_tap(data);
         }
 
         iqs9151_three_finger_reset(data);
@@ -2281,13 +2318,13 @@ static bool iqs9151_three_finger_update(struct iqs9151_data *data,
         if (tap_detected &&
             tap_emitted &&
             IS_ENABLED(CONFIG_INPUT_IQS9151_3F_PRESSHOLD_ENABLE)) {
-            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
+            iqs9151_haptic_play_tap(data);
             data->three_finger_click_pending = true;
             data->three_finger_click_pending_ms = now_ms;
             k_work_reschedule(&data->three_finger_click_work,
                               K_MSEC(THREE_FINGER_CLICK_HOLD_MAX_MS));
         } else if (tap_detected && tap_emitted) {
-            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
+            iqs9151_haptic_play_tap(data);
         }
 
         iqs9151_three_finger_reset(data);
@@ -2328,13 +2365,13 @@ static bool iqs9151_three_finger_update(struct iqs9151_data *data,
     if (tap_detected &&
         tap_emitted &&
         IS_ENABLED(CONFIG_INPUT_IQS9151_3F_PRESSHOLD_ENABLE)) {
-        iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
+        iqs9151_haptic_play_tap(data);
         data->three_finger_click_pending = true;
         data->three_finger_click_pending_ms = now_ms;
         k_work_reschedule(&data->three_finger_click_work,
                           K_MSEC(THREE_FINGER_CLICK_HOLD_MAX_MS));
     } else if (tap_detected && tap_emitted) {
-        iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
+        iqs9151_haptic_play_tap(data);
     }
 
     iqs9151_three_finger_reset(data);
@@ -3544,6 +3581,7 @@ static int iqs9151_init(const struct device *dev) {
     k_work_init_delayable(&data->inertia_cursor_work, iqs9151_inertia_cursor_work_cb);
     k_work_init_delayable(&data->caret_repeat_work, iqs9151_caret_repeat_work_cb);
     k_work_init_delayable(&data->force_poll_work, iqs9151_force_poll_work_cb);
+    k_work_init_delayable(&data->tap_repeat_work, iqs9151_tap_repeat_work_cb);
     iqs9151_inertia_state_reset(&data->inertia_scroll);
     iqs9151_inertia_state_reset(&data->inertia_cursor);
     atomic_set(&data->cursor_inertia_enabled, atomic_get(&iqs9151_saved_cursor_inertia_enabled));
@@ -3647,6 +3685,7 @@ void iqs9151_test_context_init(void *ctx, const struct device *dev) {
     k_work_init_delayable(&data->inertia_cursor_work, iqs9151_inertia_cursor_work_cb);
     k_work_init_delayable(&data->caret_repeat_work, iqs9151_caret_repeat_work_cb);
     k_work_init_delayable(&data->force_poll_work, iqs9151_force_poll_work_cb);
+    k_work_init_delayable(&data->tap_repeat_work, iqs9151_tap_repeat_work_cb);
     iqs9151_inertia_state_reset(&data->inertia_scroll);
     iqs9151_inertia_state_reset(&data->inertia_cursor);
     atomic_set(&data->cursor_inertia_enabled, atomic_get(&iqs9151_saved_cursor_inertia_enabled));
@@ -3686,6 +3725,7 @@ void iqs9151_test_cancel_pending_work(void *ctx) {
     (void)k_work_cancel_delayable(&data->inertia_cursor_work);
     (void)k_work_cancel_delayable(&data->caret_repeat_work);
     (void)k_work_cancel_delayable(&data->force_poll_work);
+    (void)k_work_cancel_delayable(&data->tap_repeat_work);
     (void)k_work_cancel(&data->work);
 }
 
