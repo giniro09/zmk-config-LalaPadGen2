@@ -29,7 +29,5 @@
 };
 
 &iqs9151 {
-    /* D14 / P0.09 is used as a digital threshold input for the FSR divider. */
-    force-gpios = <&gpio0 9 GPIO_ACTIVE_HIGH>;
     haptic-device = <&drv2605l>;
 };
