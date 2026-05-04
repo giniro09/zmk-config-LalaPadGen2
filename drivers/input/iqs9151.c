@@ -118,25 +118,25 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define DRV2605L_LIBRARY_LRA 0x06
 
 /*
- * First-pass DRV2605L tuning for Vybronics VG1040003D (10 mm coin LRA):
- * - rated voltage: 2.5 Vrms
- * - resonant frequency: 170 Hz
+ * First-pass DRV2605L tuning for LD14-002:
+ * - nominal drive reference: 3 V bipolar
+ * - resonant frequency: about 150 Hz
  *
- * These values are based on TI DRV2605L LRA tuning guidance and scaled from
- * TI forum examples for 160-175 Hz LRAs. We intentionally keep playback in the
- * internal-trigger library mode for compatibility, but provide actuator-aware
- * rated/overdrive/feedback settings instead of relying on defaults.
+ * These values intentionally bias a little stronger than the previous
+ * VG1040003D tuning so bring-up can answer a simple question first:
+ * "does the new actuator transmit meaningfully more energy into the finger?"
+ * Once the mechanism settles, these can be backed off and refined.
  */
-#define DRV2605L_VG1040003D_RATED_VOLTAGE 0x68
-#define DRV2605L_VG1040003D_OD_CLAMP 0xC8
+#define DRV2605L_VG1040003D_RATED_VOLTAGE 0x7D
+#define DRV2605L_VG1040003D_OD_CLAMP 0xF0
 #define DRV2605L_VG1040003D_FEEDBACK_CONTROL 0xB6
 #define DRV2605L_VG1040003D_CONTROL1 0x1B
-#define DRV2605L_VG1040003D_CONTROL2 0x75
+#define DRV2605L_VG1040003D_CONTROL2 0x7D
 #define DRV2605L_VG1040003D_CONTROL3 0x8C
 #define DRV2605L_VG1040003D_CONTROL4 0x40
-#define DRV2605L_VG1040003D_LRA_PERIOD 0x3C
+#define DRV2605L_VG1040003D_LRA_PERIOD 0x44
 
-#define DRV2605L_EFFECT_TAP 17
+#define DRV2605L_EFFECT_TAP 14
 #define DRV2605L_EFFECT_FORCE 14
 #define DRV2605L_EFFECT_PRECISION 52
 #define DRV2605L_EFFECT_CARET 58
