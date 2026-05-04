@@ -29,6 +29,7 @@
 };
 
 &iqs9151 {
+    force-gpios = <&gpio0 9 GPIO_ACTIVE_HIGH>;
     haptic-device = <&drv2605l>;
 };
 
