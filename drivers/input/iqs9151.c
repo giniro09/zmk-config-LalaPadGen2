@@ -132,13 +132,14 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
  * - nominal drive reference: 3 V bipolar
  * - resonant frequency: about 150 Hz
  *
- * These values intentionally bias a little stronger than the previous
- * VG1040003D tuning so bring-up can answer a simple question first:
- * "does the new actuator transmit meaningfully more energy into the finger?"
- * Once the mechanism settles, these can be backed off and refined.
+ * These values intentionally bias quite aggressively for bring-up so we can
+ * answer a simple question first:
+ * "is the current limitation mostly mechanical, or are we still under-driving
+ * the actuator from software?"
+ * Once the mechanism settles, these should be backed off and refined.
  */
-#define DRV2605L_VG1040003D_RATED_VOLTAGE 0x7D
-#define DRV2605L_VG1040003D_OD_CLAMP 0xF0
+#define DRV2605L_VG1040003D_RATED_VOLTAGE 0x90
+#define DRV2605L_VG1040003D_OD_CLAMP 0xFF
 #define DRV2605L_VG1040003D_FEEDBACK_CONTROL 0xB6
 #define DRV2605L_VG1040003D_CONTROL1 0x1B
 #define DRV2605L_VG1040003D_CONTROL2 0x7D
@@ -146,8 +147,8 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define DRV2605L_VG1040003D_CONTROL4 0x40
 #define DRV2605L_VG1040003D_LRA_PERIOD 0x44
 
-#define DRV2605L_EFFECT_TAP 4
-#define DRV2605L_EFFECT_CURSOR_TICK 24
+#define DRV2605L_EFFECT_TAP 17
+#define DRV2605L_EFFECT_CURSOR_TICK 14
 #define DRV2605L_EFFECT_FORCE 14
 #define DRV2605L_EFFECT_PRECISION 52
 #define DRV2605L_EFFECT_CARET 58
