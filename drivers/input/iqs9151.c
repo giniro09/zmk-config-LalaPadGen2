@@ -528,14 +528,14 @@ static void iqs9151_haptic_play_cursor_tick(struct iqs9151_data *data) {
         LOG_WRN("DRV2605L RTP kick failed");
         goto restore_internal;
     }
-    k_busy_wait(1200);
-    if (iqs9151_drv2605l_write(cfg, DRV2605L_REG_RTP_INPUT, 0x98) != 0) {
+    k_busy_wait(1800);
+    if (iqs9151_drv2605l_write(cfg, DRV2605L_REG_RTP_INPUT, 0x8C) != 0) {
         LOG_WRN("DRV2605L RTP brake failed");
         goto restore_internal;
     }
-    k_busy_wait(900);
+    k_busy_wait(1300);
     (void)iqs9151_drv2605l_write(cfg, DRV2605L_REG_RTP_INPUT, 0x00);
-    k_busy_wait(400);
+    k_busy_wait(500);
 
 restore_internal:
     (void)iqs9151_drv2605l_write(cfg, DRV2605L_REG_MODE, DRV2605L_MODE_INTERNAL_TRIGGER);
