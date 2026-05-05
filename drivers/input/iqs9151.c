@@ -112,6 +112,7 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #endif
 
 #define DRV2605L_REG_MODE 0x01
+#define DRV2605L_REG_RTP_INPUT 0x02
 #define DRV2605L_REG_LIBRARY 0x03
 #define DRV2605L_REG_WAVESEQ1 0x04
 #define DRV2605L_REG_WAVESEQ2 0x05
@@ -125,6 +126,7 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define DRV2605L_REG_CONTROL4 0x1E
 #define DRV2605L_REG_LRA_OPEN_LOOP_PERIOD 0x20
 #define DRV2605L_MODE_INTERNAL_TRIGGER 0x00
+#define DRV2605L_MODE_RTP 0x05
 #define DRV2605L_LIBRARY_LRA 0x06
 
 /*
@@ -496,6 +498,50 @@ static void iqs9151_haptic_play_effect(struct iqs9151_data *data, uint8_t effect
     }
 }
 
+static void iqs9151_haptic_after_playback(struct iqs9151_data *data) {
+    if (data->fsr_ready && HAPTIC_FSR_GUARD_MS > 0) {
+        data->fsr_guard_until_ms = k_uptime_get() + HAPTIC_FSR_GUARD_MS;
+    }
+}
+
+static void iqs9151_haptic_play_cursor_tick(struct iqs9151_data *data) {
+    const struct iqs9151_config *cfg = data->dev->config;
+
+    if (!cfg->has_haptic || !data->haptic_ready) {
+        return;
+    }
+
+    /*
+     * RTP click experiment:
+     * 1. strong positive kick
+     * 2. short active-brake / rebound in the opposite direction
+     * 3. return to zero and restore internal-trigger mode
+     *
+     * This aims for a shorter, more percussive feel than the ROM buzz/tick
+     * patterns and helps separate "pattern quality" from pure mechanism loss.
+     */
+    if (iqs9151_drv2605l_write(cfg, DRV2605L_REG_MODE, DRV2605L_MODE_RTP) != 0) {
+        LOG_WRN("DRV2605L RTP mode set failed");
+        return;
+    }
+    if (iqs9151_drv2605l_write(cfg, DRV2605L_REG_RTP_INPUT, 0x7F) != 0) {
+        LOG_WRN("DRV2605L RTP kick failed");
+        goto restore_internal;
+    }
+    k_busy_wait(1200);
+    if (iqs9151_drv2605l_write(cfg, DRV2605L_REG_RTP_INPUT, 0x98) != 0) {
+        LOG_WRN("DRV2605L RTP brake failed");
+        goto restore_internal;
+    }
+    k_busy_wait(900);
+    (void)iqs9151_drv2605l_write(cfg, DRV2605L_REG_RTP_INPUT, 0x00);
+    k_busy_wait(400);
+
+restore_internal:
+    (void)iqs9151_drv2605l_write(cfg, DRV2605L_REG_MODE, DRV2605L_MODE_INTERNAL_TRIGGER);
+    iqs9151_haptic_after_playback(data);
+}
+
 static void iqs9151_haptic_play_tap(struct iqs9151_data *data) {
     iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
 
@@ -533,7 +579,7 @@ static void iqs9151_cursor_haptic_tick_update(struct iqs9151_data *data,
 
     uint8_t ticks = 0U;
     while (data->cursor_haptic_motion_accum >= CURSOR_HAPTIC_TICK_STEP && ticks < 4U) {
-        iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_CURSOR_TICK);
+        iqs9151_haptic_play_cursor_tick(data);
         data->cursor_haptic_motion_accum -= CURSOR_HAPTIC_TICK_STEP;
         ticks++;
     }
