@@ -303,6 +303,23 @@ config INPUT_IQS9151_TAP_REPEAT_DIAG_INTERVAL_MS
     help
         Delay between repeated tap haptic pulses in diagnostic mode.
 
+config INPUT_IQS9151_CURSOR_HAPTIC_TICK_ENABLE
+    bool "IQS9151 cursor haptic tick enable"
+    default n
+    help
+        Play a short haptic tick as one-finger cursor movement accumulates.
+        This is useful for experimenting with Steam Controller / Steam Deck
+        style textured touch feedback.
+
+config INPUT_IQS9151_CURSOR_HAPTIC_TICK_STEP
+    int "IQS9151 cursor haptic tick step"
+    range 1 1000
+    default 120
+    depends on INPUT_IQS9151_CURSOR_HAPTIC_TICK_ENABLE
+    help
+        Motion amount required before one cursor haptic tick is emitted.
+        Smaller values feel more textured but can become noisy.
+
 config INPUT_IQS9151_2F_TAP_ENABLE
     bool "IQS9151 two-finger tap enable"
     default y

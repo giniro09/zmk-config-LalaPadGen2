@@ -98,6 +98,11 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define CARET_REPEAT_BASE_MS CONFIG_INPUT_IQS9151_CARET_REPEAT_BASE_MS
 #define HAPTIC_FSR_GUARD_MS CONFIG_INPUT_IQS9151_HAPTIC_FSR_GUARD_MS
 #define FORCE_TOUCH_POLL_INTERVAL_MS 20
+#if IS_ENABLED(CONFIG_INPUT_IQS9151_CURSOR_HAPTIC_TICK_ENABLE)
+#define CURSOR_HAPTIC_TICK_STEP CONFIG_INPUT_IQS9151_CURSOR_HAPTIC_TICK_STEP
+#else
+#define CURSOR_HAPTIC_TICK_STEP 0
+#endif
 #if IS_ENABLED(CONFIG_INPUT_IQS9151_TAP_REPEAT_DIAG)
 #define TAP_REPEAT_DIAG_COUNT CONFIG_INPUT_IQS9151_TAP_REPEAT_DIAG_COUNT
 #define TAP_REPEAT_DIAG_INTERVAL_MS CONFIG_INPUT_IQS9151_TAP_REPEAT_DIAG_INTERVAL_MS
@@ -142,6 +147,7 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define DRV2605L_VG1040003D_LRA_PERIOD 0x44
 
 #define DRV2605L_EFFECT_TAP 4
+#define DRV2605L_EFFECT_CURSOR_TICK 24
 #define DRV2605L_EFFECT_FORCE 14
 #define DRV2605L_EFFECT_PRECISION 52
 #define DRV2605L_EFFECT_CARET 58
@@ -351,6 +357,7 @@ struct iqs9151_data {
     uint8_t finger_history_head;
     uint8_t finger_history_count;
     uint8_t tap_repeat_remaining;
+    int32_t cursor_haptic_motion_accum;
 };
 
 static atomic_t iqs9151_saved_cursor_inertia_enabled =
@@ -501,6 +508,33 @@ static void iqs9151_haptic_play_tap(struct iqs9151_data *data) {
 
     if (data->tap_repeat_remaining > 0U) {
         (void)k_work_reschedule(&data->tap_repeat_work, K_MSEC(TAP_REPEAT_DIAG_INTERVAL_MS));
+    }
+}
+
+static void iqs9151_cursor_haptic_tick_update(struct iqs9151_data *data,
+                                              const struct iqs9151_frame *frame,
+                                              bool cursor_moving,
+                                              bool suppress_cursor_tail,
+                                              bool caret_active) {
+    if (!IS_ENABLED(CONFIG_INPUT_IQS9151_CURSOR_HAPTIC_TICK_ENABLE)) {
+        return;
+    }
+
+    if (frame->finger_count != 1U || !cursor_moving || suppress_cursor_tail || caret_active ||
+        data->force.active || data->hold_owner != IQS9151_HOLD_OWNER_NONE) {
+        if (frame->finger_count == 0U) {
+            data->cursor_haptic_motion_accum = 0;
+        }
+        return;
+    }
+
+    data->cursor_haptic_motion_accum += iqs9151_abs32(frame->rel_x) + iqs9151_abs32(frame->rel_y);
+
+    uint8_t ticks = 0U;
+    while (data->cursor_haptic_motion_accum >= CURSOR_HAPTIC_TICK_STEP && ticks < 4U) {
+        iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_CURSOR_TICK);
+        data->cursor_haptic_motion_accum -= CURSOR_HAPTIC_TICK_STEP;
+        ticks++;
     }
 }
 
@@ -3185,11 +3219,13 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
         iqs9151_motion_history_reset(&data->cursor_motion_history);
     }
 
-    iqs9151_report_frame_events(dev, frame, &two_result, cursor_moving,
-                                suppress_cursor_tail, data->force.caret_active);
+      iqs9151_report_frame_events(dev, frame, &two_result, cursor_moving,
+                                  suppress_cursor_tail, data->force.caret_active);
+      iqs9151_cursor_haptic_tick_update(data, frame, cursor_moving, suppress_cursor_tail,
+                                        data->force.caret_active);
 
-    LOG_DBG("rel x=%d y=%d info=0x%04x tp=0x%04x finger=%d f1x=%u f1y=%u f2x=%u f2y=%u",
-            frame->rel_x, frame->rel_y, frame->info_flags, frame->trackpad_flags,
+      LOG_DBG("rel x=%d y=%d info=0x%04x tp=0x%04x finger=%d f1x=%u f1y=%u f2x=%u f2y=%u",
+              frame->rel_x, frame->rel_y, frame->info_flags, frame->trackpad_flags,
             frame->finger_count, frame->finger1_x, frame->finger1_y,
             frame->finger2_x, frame->finger2_y);
     LOG_DBG("gesture_state: hold_button=0x%04x owner=%d 2f_mode=%d force=%u delta=%u precision=%d caret=%d",
