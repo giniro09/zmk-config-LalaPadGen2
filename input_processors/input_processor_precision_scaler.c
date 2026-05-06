@@ -49,6 +49,8 @@ static int ip_precision_scaler_handle_event(const struct device *dev, struct inp
     ARG_UNUSED(dev);
     ARG_UNUSED(param1);
     ARG_UNUSED(param2);
+    const struct device *trackpad;
+    uint16_t force_delta;
 
     if (event->type != INPUT_EV_REL) {
         return ZMK_INPUT_PROC_CONTINUE;
@@ -59,7 +61,7 @@ static int ip_precision_scaler_handle_event(const struct device *dev, struct inp
     }
 
 #if DT_HAS_COMPAT_STATUS_OKAY(azoteq_iqs9151)
-    const struct device *trackpad = DEVICE_DT_GET(DT_COMPAT_GET_ANY_STATUS_OKAY(azoteq_iqs9151));
+    trackpad = DEVICE_DT_GET(DT_COMPAT_GET_ANY_STATUS_OKAY(azoteq_iqs9151));
 
     if (!device_is_ready(trackpad) || !iqs9151_get_precision_pointer_active(trackpad)) {
         return ZMK_INPUT_PROC_CONTINUE;
@@ -69,7 +71,7 @@ static int ip_precision_scaler_handle_event(const struct device *dev, struct inp
 #endif
 
     const int32_t original = event->value;
-    const uint16_t force_delta = iqs9151_get_precision_pointer_force_delta(trackpad);
+    force_delta = iqs9151_get_precision_pointer_force_delta(trackpad);
     const int32_t scale_x100 = ip_precision_scaler_linear_scale_x100(force_delta);
 
     int32_t scaled = original * scale_x100;
