@@ -3161,6 +3161,10 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
             if (!iqs9151_haptic_play_state_diag(data, 2U)) {
                 iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_PRECISION);
             }
+        } else if (frame->finger_count == 1U &&
+                   !IS_ENABLED(CONFIG_INPUT_IQS9151_CARET_ENABLE) &&
+                   data->force.button != 0U) {
+            (void)iqs9151_emit_click(data, dev, data->force.button);
         } else if (frame->finger_count == 1U && IS_ENABLED(CONFIG_INPUT_IQS9151_CARET_ENABLE)) {
             data->force.caret_candidate = true;
         }
@@ -3370,7 +3374,9 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
         released_from_hold;
     suppress_cursor_tail =
         suppress_cursor_tail || data->force.caret_active ||
-        (data->force.active && !data->force.precision_active);
+        (data->force.active && !data->force.precision_active &&
+         (data->force.button_down_sent || data->force.overlay_only ||
+          data->force.caret_candidate));
 
     if (frame->finger_count == 3U || data->three_active) {
         iqs9151_inertia_cancel(&data->inertia_scroll, &data->inertia_scroll_work);
