@@ -233,6 +233,14 @@ config INPUT_IQS9151_FORCE_BASELINE_SETTLE_MS
       to settle with the normal finger-landing pressure ramp before force
       detection starts.
 
+config INPUT_IQS9151_FORCE_INVERT_ANALOG
+    bool "IQS9151 invert analog FSR delta polarity"
+    default n
+    help
+      Interpret lower analog readings as stronger force. Enable this when the
+      FSR divider is wired such that pressing the sensor pulls the ADC value
+      downward instead of upward.
+
 config INPUT_IQS9151_FORCE_ENTER_DEBOUNCE_MS
     int "IQS9151 FSR force enter debounce (ms)"
     range 0 100

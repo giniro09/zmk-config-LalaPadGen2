@@ -91,6 +91,7 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define FORCE_THRESHOLD CONFIG_INPUT_IQS9151_FORCE_THRESHOLD
 #define FORCE_RELEASE_THRESHOLD CONFIG_INPUT_IQS9151_FORCE_RELEASE_THRESHOLD
 #define FORCE_BASELINE_SETTLE_MS CONFIG_INPUT_IQS9151_FORCE_BASELINE_SETTLE_MS
+#define FORCE_INVERT_ANALOG IS_ENABLED(CONFIG_INPUT_IQS9151_FORCE_INVERT_ANALOG)
 #define FORCE_ENTER_DEBOUNCE_MS CONFIG_INPUT_IQS9151_FORCE_ENTER_DEBOUNCE_MS
 #define FORCE_RELEASE_DEBOUNCE_MS CONFIG_INPUT_IQS9151_FORCE_RELEASE_DEBOUNCE_MS
 #define FORCE_MOVE_THRESHOLD CONFIG_INPUT_IQS9151_FORCE_MOVE_THRESHOLD
@@ -3093,16 +3094,23 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
              * normal "finger landing" ramp does not immediately count as force.
              */
             data->fsr_touch_baseline_raw = fsr_raw;
-        } else if (!data->force.active && fsr_raw < data->fsr_touch_baseline_raw) {
+        } else if (!data->force.active &&
+                   ((!FORCE_INVERT_ANALOG && fsr_raw < data->fsr_touch_baseline_raw) ||
+                    (FORCE_INVERT_ANALOG && fsr_raw > data->fsr_touch_baseline_raw))) {
             /*
-             * Before force engages, allow the baseline to settle downward so small
-             * ADC drift does not immediately count as intentional force.
+             * Before force engages, allow the baseline to drift in the
+             * non-force direction so ADC wander does not immediately count as
+             * intentional force.
              */
             data->fsr_touch_baseline_raw = fsr_raw;
         }
 
-        if (data->fsr_touch_baseline_valid && fsr_raw > data->fsr_touch_baseline_raw) {
-            fsr_delta = (int32_t)fsr_raw - (int32_t)data->fsr_touch_baseline_raw;
+        if (data->fsr_touch_baseline_valid) {
+            if (!FORCE_INVERT_ANALOG && fsr_raw > data->fsr_touch_baseline_raw) {
+                fsr_delta = (int32_t)fsr_raw - (int32_t)data->fsr_touch_baseline_raw;
+            } else if (FORCE_INVERT_ANALOG && fsr_raw < data->fsr_touch_baseline_raw) {
+                fsr_delta = (int32_t)data->fsr_touch_baseline_raw - (int32_t)fsr_raw;
+            }
         }
     }
     data->force.fsr_delta_raw = (uint16_t)CLAMP(fsr_delta, 0, UINT16_MAX);
