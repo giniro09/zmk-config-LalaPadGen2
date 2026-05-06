@@ -233,6 +233,22 @@ config INPUT_IQS9151_FORCE_BASELINE_SETTLE_MS
       to settle with the normal finger-landing pressure ramp before force
       detection starts.
 
+config INPUT_IQS9151_FORCE_ENTER_DEBOUNCE_MS
+    int "IQS9151 FSR force enter debounce (ms)"
+    range 0 100
+    default 25
+    help
+      Minimum time the FSR delta must stay above the force threshold before
+      force mode is entered.
+
+config INPUT_IQS9151_FORCE_RELEASE_DEBOUNCE_MS
+    int "IQS9151 FSR force release debounce (ms)"
+    range 0 100
+    default 35
+    help
+      Minimum time the FSR delta must stay below the release threshold before
+      force mode is released.
+
 config INPUT_IQS9151_FORCE_MOVE_THRESHOLD
     int "IQS9151 force movement threshold"
     range 1 500

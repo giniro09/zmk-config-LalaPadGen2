@@ -91,6 +91,8 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define FORCE_THRESHOLD CONFIG_INPUT_IQS9151_FORCE_THRESHOLD
 #define FORCE_RELEASE_THRESHOLD CONFIG_INPUT_IQS9151_FORCE_RELEASE_THRESHOLD
 #define FORCE_BASELINE_SETTLE_MS CONFIG_INPUT_IQS9151_FORCE_BASELINE_SETTLE_MS
+#define FORCE_ENTER_DEBOUNCE_MS CONFIG_INPUT_IQS9151_FORCE_ENTER_DEBOUNCE_MS
+#define FORCE_RELEASE_DEBOUNCE_MS CONFIG_INPUT_IQS9151_FORCE_RELEASE_DEBOUNCE_MS
 #define FORCE_MOVE_THRESHOLD CONFIG_INPUT_IQS9151_FORCE_MOVE_THRESHOLD
 #define CARET_HOLD_MS CONFIG_INPUT_IQS9151_CARET_HOLD_MS
 #define CARET_DEADZONE CONFIG_INPUT_IQS9151_CARET_DEADZONE
@@ -303,6 +305,8 @@ struct iqs9151_force_state {
     uint16_t fsr_raw;
     uint16_t fsr_delta_raw;
     int64_t quiet_since_ms;
+    int64_t enter_candidate_since_ms;
+    int64_t release_candidate_since_ms;
     uint16_t center_x;
     uint16_t center_y;
     int32_t caret_dx;
@@ -458,6 +462,8 @@ static void iqs9151_force_reset(struct iqs9151_data *data) {
     data->force.button = 0U;
     data->force.quiet_since_ms = 0;
     data->force.fsr_delta_raw = 0U;
+    data->force.enter_candidate_since_ms = 0;
+    data->force.release_candidate_since_ms = 0;
     data->force.center_x = 0U;
     data->force.center_y = 0U;
     data->force.caret_dx = 0;
@@ -3102,6 +3108,13 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     data->force.fsr_delta_raw = (uint16_t)CLAMP(fsr_delta, 0, UINT16_MAX);
 
     if (!data->force.active && (touching || force_diag_mode) && fsr_delta >= FORCE_THRESHOLD) {
+        if (data->force.enter_candidate_since_ms == 0) {
+            data->force.enter_candidate_since_ms = now_ms;
+        }
+        if ((now_ms - data->force.enter_candidate_since_ms) < FORCE_ENTER_DEBOUNCE_MS) {
+            return released_from_hold;
+        }
+
         uint16_t center_x = 0U;
         uint16_t center_y = 0U;
 
@@ -3152,19 +3165,40 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
             data->force.caret_candidate = true;
         }
     }
+    if (!data->force.active) {
+        data->force.enter_candidate_since_ms = 0;
+    }
 
     if (!data->force.active) {
         return released_from_hold;
     }
 
-    if ((!touching && !force_diag_mode) ||
-        (!force_diag_mode && frame->finger_count != data->force.finger_count) ||
-        fsr_delta <= FORCE_RELEASE_THRESHOLD) {
+    const bool immediate_release =
+        (!touching && !force_diag_mode) ||
+        (!force_diag_mode && frame->finger_count != data->force.finger_count);
+    const bool threshold_release = fsr_delta <= FORCE_RELEASE_THRESHOLD;
+
+    if (!immediate_release && !threshold_release) {
+        data->force.release_candidate_since_ms = 0;
+    }
+
+    if (immediate_release || threshold_release) {
+        if (!immediate_release) {
+            if (data->force.release_candidate_since_ms == 0) {
+                data->force.release_candidate_since_ms = now_ms;
+            }
+            if ((now_ms - data->force.release_candidate_since_ms) <
+                FORCE_RELEASE_DEBOUNCE_MS) {
+                return released_from_hold;
+            }
+        }
+
         iqs9151_caret_cancel_repeat(data);
         if (data->force.button_down_sent && data->hold_owner == IQS9151_HOLD_OWNER_FORCE) {
             iqs9151_release_hold(data, dev);
             released_from_hold = true;
-        } else if (!force_diag_mode && data->force.finger_count == 1U && !data->force.caret_active &&
+        } else if (!force_diag_mode && !IS_ENABLED(CONFIG_INPUT_IQS9151_HAPTIC_STATE_DIAG) &&
+                   data->force.finger_count == 1U && !data->force.caret_active &&
                    !data->force.precision_active && data->force.button != 0U) {
             (void)iqs9151_emit_click(data, dev, data->force.button);
         }
