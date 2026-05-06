@@ -3409,12 +3409,12 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
         return;
     }
 
-    if (frame->finger_count == 1U &&
-        (cursor_moving || iqs9151_abs32(frame->rel_x) >= FORCE_MOVE_THRESHOLD ||
-         iqs9151_abs32(frame->rel_y) >= FORCE_MOVE_THRESHOLD)) {
-        data->single_finger_session_moved = true;
-    } else if (prev_frame.finger_count == 0U && frame->finger_count == 1U) {
+    if (prev_frame.finger_count == 0U && frame->finger_count == 1U) {
         data->single_finger_session_moved = false;
+    } else if (prev_frame.finger_count == 1U && frame->finger_count == 1U &&
+               (cursor_moving || iqs9151_abs32(frame->rel_x) >= FORCE_MOVE_THRESHOLD ||
+                iqs9151_abs32(frame->rel_y) >= FORCE_MOVE_THRESHOLD)) {
+        data->single_finger_session_moved = true;
     } else if (frame->finger_count == 0U) {
         data->single_finger_session_moved = false;
     }
