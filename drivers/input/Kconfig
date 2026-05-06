@@ -257,6 +257,13 @@ config INPUT_IQS9151_FORCE_MOVE_THRESHOLD
       Relative movement threshold used to classify a force press as a
       moving-context precision interaction.
 
+config INPUT_IQS9151_CARET_ENABLE
+    bool "IQS9151 caret mode enable"
+    default y
+    help
+      Enable the static one-finger force hold path that transitions into
+      caret mode.
+
 config INPUT_IQS9151_CARET_HOLD_MS
     int "IQS9151 caret hold delay (ms)"
     range 50 1000
