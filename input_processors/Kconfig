@@ -57,6 +57,36 @@ config ZMK_INPUT_PROCESSOR_PRECISION_SCALER_SCALE_X10
       Extra pointer scale applied during precision pointer mode for larger
       movement deltas. 4 = 0.4x.
 
+config ZMK_INPUT_PROCESSOR_PRECISION_SCALER_MIN_SCALE_X100
+    int "Precision maximum-pressure scale (x100)"
+    range 5 100
+    default 30
+    help
+      Pointer scale applied at or above the configured maximum force delta.
+      30 = 0.30x.
+
+config ZMK_INPUT_PROCESSOR_PRECISION_SCALER_MAX_SCALE_X100
+    int "Precision minimum-pressure scale (x100)"
+    range 5 100
+    default 90
+    help
+      Pointer scale applied right at precision entry. 90 = 0.90x.
+
+config ZMK_INPUT_PROCESSOR_PRECISION_SCALER_START_FORCE_DELTA
+    int "Precision force delta at scale start"
+    range 1 32767
+    default 5000
+    help
+      FSR delta at which the linear precision slowdown begins.
+
+config ZMK_INPUT_PROCESSOR_PRECISION_SCALER_MAX_FORCE_DELTA
+    int "Precision force delta for maximum slowdown"
+    range 100 32767
+    default 12000
+    help
+      FSR delta at which the precision pointer reaches its minimum scale.
+      Between entry threshold and this value, scaling changes linearly.
+
 config ZMK_INPUT_PROCESSOR_PRECISION_SCALER_SMALL_THRESHOLD
     int "Precision small-motion threshold"
     range 1 50

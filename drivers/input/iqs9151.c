@@ -1530,6 +1530,19 @@ bool iqs9151_get_precision_pointer_active(const struct device *dev) {
     return data->force.precision_active;
 }
 
+uint16_t iqs9151_get_precision_pointer_force_delta(const struct device *dev) {
+    if (dev == NULL) {
+        return 0U;
+    }
+
+    const struct iqs9151_data *data = dev->data;
+    if (!data->force.precision_active) {
+        return 0U;
+    }
+
+    return data->force.fsr_delta_raw;
+}
+
 static void iqs9151_release_hold(struct iqs9151_data *data, const struct device *dev) {
     if (data->hold_button == 0U) {
         return;

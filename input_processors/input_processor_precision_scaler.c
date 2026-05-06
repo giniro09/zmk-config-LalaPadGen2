@@ -1,6 +1,7 @@
 /*
- * Input processor that applies a fixed XY scale while IQS9151 precision mode
- * is active.
+ * Input processor that applies an extra XY scale while IQS9151 precision mode
+ * is active. The scale changes linearly with FSR force delta, so stronger
+ * force yields slower pointer motion.
  */
 
 #define DT_DRV_COMPAT zmk_input_processor_precision_scaler
@@ -11,11 +12,36 @@
 
 #include <zmk/iqs9151_runtime.h>
 
-#define PRECISION_SMALL_THRESHOLD CONFIG_ZMK_INPUT_PROCESSOR_PRECISION_SCALER_SMALL_THRESHOLD
-#define PRECISION_MEDIUM_THRESHOLD CONFIG_ZMK_INPUT_PROCESSOR_PRECISION_SCALER_MEDIUM_THRESHOLD
-#define PRECISION_SMALL_SCALE_X10 CONFIG_ZMK_INPUT_PROCESSOR_PRECISION_SCALER_SMALL_SCALE_X10
-#define PRECISION_MEDIUM_SCALE_X10 CONFIG_ZMK_INPUT_PROCESSOR_PRECISION_SCALER_MEDIUM_SCALE_X10
-#define PRECISION_LARGE_SCALE_X10 CONFIG_ZMK_INPUT_PROCESSOR_PRECISION_SCALER_SCALE_X10
+#define PRECISION_MIN_SCALE_X100 CONFIG_ZMK_INPUT_PROCESSOR_PRECISION_SCALER_MIN_SCALE_X100
+#define PRECISION_MAX_SCALE_X100 CONFIG_ZMK_INPUT_PROCESSOR_PRECISION_SCALER_MAX_SCALE_X100
+#define PRECISION_START_FORCE_DELTA CONFIG_ZMK_INPUT_PROCESSOR_PRECISION_SCALER_START_FORCE_DELTA
+#define PRECISION_MAX_FORCE_DELTA CONFIG_ZMK_INPUT_PROCESSOR_PRECISION_SCALER_MAX_FORCE_DELTA
+
+static int32_t ip_precision_scaler_linear_scale_x100(uint16_t force_delta) {
+    if (force_delta == 0U) {
+        return 100;
+    }
+
+    if (force_delta >= PRECISION_MAX_FORCE_DELTA) {
+        return PRECISION_MIN_SCALE_X100;
+    }
+
+    const int32_t scale_span = PRECISION_MAX_SCALE_X100 - PRECISION_MIN_SCALE_X100;
+    const int32_t force_span = PRECISION_MAX_FORCE_DELTA - PRECISION_START_FORCE_DELTA;
+    if (force_span <= 0) {
+        return PRECISION_MIN_SCALE_X100;
+    }
+
+    if (force_delta <= PRECISION_START_FORCE_DELTA) {
+        return PRECISION_MAX_SCALE_X100;
+    }
+
+    const int32_t progressed = (int32_t)force_delta - PRECISION_START_FORCE_DELTA;
+    const int32_t reduction = (progressed * scale_span) / force_span;
+    const int32_t scale_x100 = PRECISION_MAX_SCALE_X100 - reduction;
+
+    return CLAMP(scale_x100, PRECISION_MIN_SCALE_X100, PRECISION_MAX_SCALE_X100);
+}
 
 static int ip_precision_scaler_handle_event(const struct device *dev, struct input_event *event,
                                             uint32_t param1, uint32_t param2,
@@ -43,21 +69,15 @@ static int ip_precision_scaler_handle_event(const struct device *dev, struct inp
 #endif
 
     const int32_t original = event->value;
-    const int32_t magnitude = (original < 0) ? -original : original;
-    int32_t scale_x10 = PRECISION_LARGE_SCALE_X10;
+    const uint16_t force_delta = iqs9151_get_precision_pointer_force_delta(trackpad);
+    const int32_t scale_x100 = ip_precision_scaler_linear_scale_x100(force_delta);
 
-    if (magnitude <= PRECISION_SMALL_THRESHOLD) {
-        scale_x10 = PRECISION_SMALL_SCALE_X10;
-    } else if (magnitude <= PRECISION_MEDIUM_THRESHOLD) {
-        scale_x10 = PRECISION_MEDIUM_SCALE_X10;
-    }
-
-    int32_t scaled = original * scale_x10;
+    int32_t scaled = original * scale_x100;
     if (state != NULL && state->remainder != NULL) {
         scaled += *state->remainder;
     }
 
-    event->value = scaled / 10;
+    event->value = scaled / 100;
 
     if (event->value == 0 && original != 0) {
         event->value = (original > 0) ? 1 : -1;
@@ -68,7 +88,7 @@ static int ip_precision_scaler_handle_event(const struct device *dev, struct inp
     }
 
     if (state != NULL && state->remainder != NULL) {
-        *state->remainder = (int16_t)(scaled - ((int32_t)event->value * 10));
+        *state->remainder = (int16_t)(scaled - ((int32_t)event->value * 100));
     }
 
     return ZMK_INPUT_PROC_CONTINUE;
