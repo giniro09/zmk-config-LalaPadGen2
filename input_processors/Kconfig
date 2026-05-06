@@ -50,11 +50,43 @@ menuconfig ZMK_INPUT_PROCESSOR_PRECISION_SCALER
 if ZMK_INPUT_PROCESSOR_PRECISION_SCALER
 
 config ZMK_INPUT_PROCESSOR_PRECISION_SCALER_SCALE_X10
-    int "Precision scale (x10)"
+    int "Precision large-motion scale (x10)"
     range 1 10
     default 4
     help
-      Extra pointer scale applied during precision pointer mode.
-      4 = 0.4x.
+      Extra pointer scale applied during precision pointer mode for larger
+      movement deltas. 4 = 0.4x.
+
+config ZMK_INPUT_PROCESSOR_PRECISION_SCALER_SMALL_THRESHOLD
+    int "Precision small-motion threshold"
+    range 1 50
+    default 2
+    help
+      Relative delta magnitude at or below which precision mode uses the
+      small-motion scale.
+
+config ZMK_INPUT_PROCESSOR_PRECISION_SCALER_MEDIUM_THRESHOLD
+    int "Precision medium-motion threshold"
+    range 2 100
+    default 6
+    help
+      Relative delta magnitude at or below which precision mode uses the
+      medium-motion scale. Larger deltas use the large-motion scale.
+
+config ZMK_INPUT_PROCESSOR_PRECISION_SCALER_SMALL_SCALE_X10
+    int "Precision small-motion scale (x10)"
+    range 1 10
+    default 8
+    help
+      Extra pointer scale applied during precision pointer mode for tiny
+      movement deltas. 8 = 0.8x.
+
+config ZMK_INPUT_PROCESSOR_PRECISION_SCALER_MEDIUM_SCALE_X10
+    int "Precision medium-motion scale (x10)"
+    range 1 10
+    default 6
+    help
+      Extra pointer scale applied during precision pointer mode for medium
+      movement deltas. 6 = 0.6x.
 
 endif

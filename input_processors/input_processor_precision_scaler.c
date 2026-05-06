@@ -7,9 +7,16 @@
 
 #include <zephyr/device.h>
 #include <zephyr/dt-bindings/input/input-event-codes.h>
+#include <zephyr/sys/util.h>
 #include <drivers/input_processor.h>
 
 #include <zmk/iqs9151_runtime.h>
+
+#define PRECISION_SMALL_THRESHOLD CONFIG_ZMK_INPUT_PROCESSOR_PRECISION_SCALER_SMALL_THRESHOLD
+#define PRECISION_MEDIUM_THRESHOLD CONFIG_ZMK_INPUT_PROCESSOR_PRECISION_SCALER_MEDIUM_THRESHOLD
+#define PRECISION_SMALL_SCALE_X10 CONFIG_ZMK_INPUT_PROCESSOR_PRECISION_SCALER_SMALL_SCALE_X10
+#define PRECISION_MEDIUM_SCALE_X10 CONFIG_ZMK_INPUT_PROCESSOR_PRECISION_SCALER_MEDIUM_SCALE_X10
+#define PRECISION_LARGE_SCALE_X10 CONFIG_ZMK_INPUT_PROCESSOR_PRECISION_SCALER_SCALE_X10
 
 static int ip_precision_scaler_handle_event(const struct device *dev, struct input_event *event,
                                             uint32_t param1, uint32_t param2,
@@ -36,12 +43,30 @@ static int ip_precision_scaler_handle_event(const struct device *dev, struct inp
     return ZMK_INPUT_PROC_CONTINUE;
 #endif
 
-    int32_t scaled = (int32_t)event->value * CONFIG_ZMK_INPUT_PROCESSOR_PRECISION_SCALER_SCALE_X10;
+    const int32_t original = event->value;
+    const int32_t magnitude = ABS(original);
+    int32_t scale_x10 = PRECISION_LARGE_SCALE_X10;
+
+    if (magnitude <= PRECISION_SMALL_THRESHOLD) {
+        scale_x10 = PRECISION_SMALL_SCALE_X10;
+    } else if (magnitude <= PRECISION_MEDIUM_THRESHOLD) {
+        scale_x10 = PRECISION_MEDIUM_SCALE_X10;
+    }
+
+    int32_t scaled = original * scale_x10;
     if (state != NULL && state->remainder != NULL) {
         scaled += *state->remainder;
     }
 
     event->value = scaled / 10;
+
+    if (event->value == 0 && original != 0) {
+        event->value = (original > 0) ? 1 : -1;
+        if (state != NULL && state->remainder != NULL) {
+            *state->remainder = 0;
+        }
+        return ZMK_INPUT_PROC_CONTINUE;
+    }
 
     if (state != NULL && state->remainder != NULL) {
         *state->remainder = (int16_t)(scaled - ((int32_t)event->value * 10));
