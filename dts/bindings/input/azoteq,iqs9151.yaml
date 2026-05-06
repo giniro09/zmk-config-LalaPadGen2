@@ -14,6 +14,14 @@ properties:
     type: phandle-array
     required: false
     description: Optional digital FSR threshold input used for force interaction.
+  fsr-device:
+    type: phandle
+    required: false
+    description: Optional external I2C ADC device used for FSR analog input.
+  fsr-channel:
+    type: int
+    required: false
+    description: Optional channel index for the external I2C ADC FSR input.
   io-channels:
     type: phandle-array
     required: false

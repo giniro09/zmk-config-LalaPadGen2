@@ -1,0 +1,5 @@
+description: Simple ADS1115 I2C ADC node for FSR input experiments.
+
+compatible: "ti,ads1115-fsr"
+
+include: i2c-device.yaml

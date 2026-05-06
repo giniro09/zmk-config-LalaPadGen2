@@ -129,6 +129,15 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define DRV2605L_MODE_RTP 0x05
 #define DRV2605L_LIBRARY_LRA 0x06
 
+#define ADS1115_REG_CONVERSION 0x00
+#define ADS1115_REG_CONFIG 0x01
+#define ADS1115_CONFIG_OS_SINGLE 0x8000
+#define ADS1115_CONFIG_MUX_AIN0 0x4000
+#define ADS1115_CONFIG_PGA_4V096 0x0200
+#define ADS1115_CONFIG_MODE_SINGLE 0x0100
+#define ADS1115_CONFIG_DR_860SPS 0x00E0
+#define ADS1115_CONFIG_COMP_DISABLE 0x0003
+
 /*
  * First-pass DRV2605L tuning for LD14-002:
  * - nominal drive reference: 3 V bipolar
@@ -165,9 +174,12 @@ struct iqs9151_config {
     struct i2c_dt_spec i2c;
     struct gpio_dt_spec irq_gpio;
     struct gpio_dt_spec force_gpio;
+    struct i2c_dt_spec fsr_i2c;
+    uint8_t fsr_i2c_channel;
     struct iqs9151_io_channel_config fsr_io;
     struct i2c_dt_spec haptic;
     bool has_force_gpio;
+    bool has_fsr_i2c;
     bool has_fsr_adc;
     bool has_fsr;
     bool has_haptic;
@@ -474,6 +486,24 @@ static int iqs9151_drv2605l_write(const struct iqs9151_config *cfg, uint8_t reg,
     return i2c_reg_write_byte_dt(&cfg->haptic, reg, value);
 }
 
+static int iqs9151_ads1115_write_u16(const struct iqs9151_config *cfg, uint8_t reg, uint16_t value) {
+    uint8_t tx[3] = {reg, (uint8_t)(value >> 8), (uint8_t)(value & 0xFF)};
+
+    return i2c_write_dt(&cfg->fsr_i2c, tx, sizeof(tx));
+}
+
+static int iqs9151_ads1115_read_u16(const struct iqs9151_config *cfg, uint8_t reg, uint16_t *value) {
+    uint8_t rx[2] = {0};
+    int ret = i2c_write_read_dt(&cfg->fsr_i2c, &reg, sizeof(reg), rx, sizeof(rx));
+
+    if (ret != 0) {
+        return ret;
+    }
+
+    *value = ((uint16_t)rx[0] << 8) | rx[1];
+    return 0;
+}
+
 static void iqs9151_haptic_play_effect(struct iqs9151_data *data, uint8_t effect) {
     const struct iqs9151_config *cfg = data->dev->config;
 
@@ -662,6 +692,16 @@ static int iqs9151_fsr_init(struct iqs9151_data *data, const struct iqs9151_conf
         return 0;
     }
 
+    if (cfg->has_fsr_i2c) {
+        if (!device_is_ready(cfg->fsr_i2c.bus)) {
+            LOG_WRN("FSR I2C ADC bus is not ready");
+            return -ENODEV;
+        }
+
+        data->fsr_ready = true;
+        return 0;
+    }
+
     if (data->fsr_adc == NULL || !device_is_ready(data->fsr_adc)) {
         LOG_WRN("FSR ADC device is not ready");
         return -ENODEV;
@@ -712,6 +752,25 @@ static bool iqs9151_read_fsr(struct iqs9151_data *data, uint16_t *raw_out) {
             return false;
         }
         *raw_out = (value != 0) ? FORCE_THRESHOLD : 0U;
+    } else if (cfg->has_fsr_i2c) {
+        const uint16_t mux =
+            (uint16_t)(ADS1115_CONFIG_MUX_AIN0 + ((cfg->fsr_i2c_channel & 0x3U) << 12));
+        const uint16_t config = ADS1115_CONFIG_OS_SINGLE | mux | ADS1115_CONFIG_PGA_4V096 |
+                                ADS1115_CONFIG_MODE_SINGLE | ADS1115_CONFIG_DR_860SPS |
+                                ADS1115_CONFIG_COMP_DISABLE;
+        uint16_t sample = 0U;
+
+        if (iqs9151_ads1115_write_u16(cfg, ADS1115_REG_CONFIG, config) != 0) {
+            LOG_WRN("FSR ADS1115 config write failed");
+            return false;
+        }
+        k_sleep(K_MSEC(2));
+        if (iqs9151_ads1115_read_u16(cfg, ADS1115_REG_CONVERSION, &sample) != 0) {
+            LOG_WRN("FSR ADS1115 conversion read failed");
+            return false;
+        }
+
+        *raw_out = (uint16_t)(((int16_t)sample < 0) ? 0 : sample);
     } else {
         int ret = adc_read(data->fsr_adc, &data->fsr_as);
         data->fsr_as.calibrate = false;
@@ -736,13 +795,13 @@ static bool iqs9151_read_fsr_diag_scan(struct iqs9151_data *data, uint16_t *raw_
                                        uint8_t *channel_out) {
     const struct iqs9151_config *cfg = data->dev->config;
 
-    if (cfg->has_force_gpio) {
+    if (cfg->has_force_gpio || cfg->has_fsr_i2c) {
         uint16_t raw = 0U;
         if (!iqs9151_read_fsr(data, &raw)) {
             return false;
         }
         *raw_out = raw;
-        *channel_out = 0xFFU;
+        *channel_out = cfg->has_force_gpio ? 0xFFU : cfg->fsr_i2c_channel;
         return true;
     }
 
@@ -3880,21 +3939,27 @@ void iqs9151_test_force_pinch_session(void *ctx, bool active) {
 #endif
 
 #define IQS9151_INIT(inst)                                                                    \
-    static const struct iqs9151_config iqs9151_config_##inst = {                             \
-        .i2c = I2C_DT_SPEC_INST_GET(inst),                                                   \
-        .irq_gpio = GPIO_DT_SPEC_INST_GET(inst, irq_gpios),                                  \
-        .has_force_gpio = DT_INST_NODE_HAS_PROP(inst, force_gpios),                          \
-        .has_fsr_adc = DT_INST_NODE_HAS_PROP(inst, io_channels),                             \
-        .has_fsr = DT_INST_NODE_HAS_PROP(inst, io_channels) ||                               \
-                   DT_INST_NODE_HAS_PROP(inst, force_gpios),                                 \
-        .has_haptic = DT_INST_NODE_HAS_PROP(inst, haptic_device),                            \
-        COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, force_gpios),                                \
-                    (.force_gpio = GPIO_DT_SPEC_INST_GET(inst, force_gpios),),               \
-                    ())                                                                       \
-        COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, io_channels),                                \
-                    (.fsr_io = {.channel = DT_IO_CHANNELS_INPUT_BY_IDX(DT_DRV_INST(inst),    \
-                                                                       0)},),                \
-                    ())                                                                       \
+      static const struct iqs9151_config iqs9151_config_##inst = {                             \
+          .i2c = I2C_DT_SPEC_INST_GET(inst),                                                   \
+          .irq_gpio = GPIO_DT_SPEC_INST_GET(inst, irq_gpios),                                  \
+          .has_force_gpio = DT_INST_NODE_HAS_PROP(inst, force_gpios),                          \
+          .has_fsr_i2c = DT_INST_NODE_HAS_PROP(inst, fsr_device),                              \
+          .has_fsr_adc = DT_INST_NODE_HAS_PROP(inst, io_channels),                             \
+          .has_fsr = DT_INST_NODE_HAS_PROP(inst, io_channels) ||                               \
+                     DT_INST_NODE_HAS_PROP(inst, force_gpios) ||                               \
+                     DT_INST_NODE_HAS_PROP(inst, fsr_device),                                  \
+          .has_haptic = DT_INST_NODE_HAS_PROP(inst, haptic_device),                            \
+          COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, force_gpios),                                \
+                      (.force_gpio = GPIO_DT_SPEC_INST_GET(inst, force_gpios),),               \
+                      ())                                                                       \
+          COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, fsr_device),                                 \
+                      (.fsr_i2c = I2C_DT_SPEC_GET(DT_PHANDLE(DT_DRV_INST(inst), fsr_device)),  \
+                       .fsr_i2c_channel = DT_PROP_OR(DT_DRV_INST(inst), fsr_channel, 0),),     \
+                      ())                                                                       \
+          COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, io_channels),                                \
+                      (.fsr_io = {.channel = DT_IO_CHANNELS_INPUT_BY_IDX(DT_DRV_INST(inst),    \
+                                                                         0)},),                \
+                      ())                                                                       \
         COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, haptic_device),                              \
                     (.haptic = I2C_DT_SPEC_GET(                                              \
                          DT_PHANDLE(DT_DRV_INST(inst), haptic_device)),),                    \

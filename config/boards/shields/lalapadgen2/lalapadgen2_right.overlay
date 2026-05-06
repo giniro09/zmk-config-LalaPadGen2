@@ -6,6 +6,12 @@
         reg = <0x5a>;
         status = "okay";
     };
+
+    fsr_adc: ads1115@48 {
+        compatible = "ti,ads1115-fsr";
+        reg = <0x48>;
+        status = "okay";
+    };
 };
 
 &default_transform {
@@ -29,7 +35,8 @@
 };
 
 &iqs9151 {
-    force-gpios = <&gpio0 9 GPIO_ACTIVE_HIGH>;
+    fsr-device = <&fsr_adc>;
+    fsr-channel = <0>;
     haptic-device = <&drv2605l>;
 };
 
