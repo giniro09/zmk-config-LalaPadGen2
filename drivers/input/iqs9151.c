@@ -213,6 +213,11 @@ enum iqs9151_hold_owner {
     IQS9151_HOLD_OWNER_TAPDRAG,
     IQS9151_HOLD_OWNER_FORCE,
 };
+enum iqs9151_force_mode {
+    IQS9151_FORCE_MODE_NONE = 0,
+    IQS9151_FORCE_MODE_PRECISION_ONLY,
+    IQS9151_FORCE_MODE_HOLD_DRAG,
+};
 struct iqs9151_one_finger_state {
     bool active;
     bool hold_sent;
@@ -309,6 +314,7 @@ struct iqs9151_force_state {
     int64_t quiet_since_ms;
     int64_t enter_candidate_since_ms;
     int64_t release_candidate_since_ms;
+    enum iqs9151_force_mode mode;
     uint16_t center_x;
     uint16_t center_y;
     int32_t caret_dx;
@@ -459,6 +465,7 @@ static void iqs9151_force_reset(struct iqs9151_data *data) {
     data->force.active = false;
     data->force.overlay_only = false;
     data->force.moving_origin = false;
+    data->force.mode = IQS9151_FORCE_MODE_NONE;
     data->force.button_down_sent = false;
     data->force.precision_active = false;
     data->force.caret_candidate = false;
@@ -2839,6 +2846,14 @@ static bool iqs9151_update_gesture_sessions(struct iqs9151_data *data,
                                             struct iqs9151_two_finger_result *two_result) {
     const struct device *dev = data->dev;
     bool released_from_hold = false;
+    const bool suppress_one_finger_gestures =
+        data->force.active && data->force.mode == IQS9151_FORCE_MODE_PRECISION_ONLY;
+
+    if (suppress_one_finger_gestures) {
+        iqs9151_clear_one_finger_click_pending(data);
+        (void)k_work_cancel_delayable(&data->one_finger_click_work);
+        iqs9151_one_finger_reset(&data->one_finger);
+    }
 
     if (frame->finger_count > 1U && data->one_finger_click_pending) {
         if (data->hold_button == INPUT_BTN_0) {
@@ -2874,7 +2889,8 @@ static bool iqs9151_update_gesture_sessions(struct iqs9151_data *data,
             return released_from_hold;
         }
     }
-    if (frame->finger_count == 3U && data->one_finger.active) {
+    if (!suppress_one_finger_gestures &&
+        frame->finger_count == 3U && data->one_finger.active) {
         const int64_t elapsed_ms = k_uptime_get() - data->one_finger.down_ms;
 
         data->three_finger_one_lead_valid =
@@ -2920,7 +2936,8 @@ static bool iqs9151_update_gesture_sessions(struct iqs9151_data *data,
         data->three_finger_two_lead_valid = false;
     }
 
-    if (frame->finger_count == 2U && data->one_finger.active) {
+    if (!suppress_one_finger_gestures &&
+        frame->finger_count == 2U && data->one_finger.active) {
         const int64_t elapsed_ms = k_uptime_get() - data->one_finger.down_ms;
 
         data->two_finger_one_lead_valid =
@@ -2938,7 +2955,8 @@ static bool iqs9151_update_gesture_sessions(struct iqs9151_data *data,
         data->two_finger_one_lead_valid = false;
     }
 
-    if (frame->finger_count != 1U && data->one_finger.active) {
+    if (!suppress_one_finger_gestures &&
+        frame->finger_count != 1U && data->one_finger.active) {
         released_from_hold = iqs9151_one_finger_update(data, frame, prev_frame, dev);
     }
     if (frame->finger_count != 2U && data->two_finger.active) {
@@ -2950,7 +2968,8 @@ static bool iqs9151_update_gesture_sessions(struct iqs9151_data *data,
 
     switch (frame->finger_count) {
     case 1U:
-        if (!(data->two_finger.active && data->two_finger.release_pending)) {
+        if (!suppress_one_finger_gestures &&
+            !(data->two_finger.active && data->two_finger.release_pending)) {
             if (!(data->three_active && data->three_release_pending)) {
                 released_from_hold = iqs9151_one_finger_update(data, frame, prev_frame, dev);
             }
@@ -3140,6 +3159,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         data->force.button = iqs9151_force_button_for_fingers(frame->finger_count);
         data->force.overlay_only = tapdrag_active;
         data->force.moving_origin = precision_only_origin;
+        data->force.mode = IQS9151_FORCE_MODE_NONE;
         data->force.quiet_since_ms = now_ms;
         (void)iqs9151_get_finger1_xy(frame, prev_frame, &center_x, &center_y);
         data->force.center_x = center_x;
@@ -3161,12 +3181,6 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
                 iqs9151_motion_history_reset(&data->cursor_motion_history);
             }
 
-            if (!defer_static_one_finger_click && !precision_only_origin &&
-                data->force.button != 0U &&
-                iqs9151_emit_hold_press_owned(data, dev, data->force.button,
-                                             IQS9151_HOLD_OWNER_FORCE)) {
-                data->force.button_down_sent = true;
-            }
         }
 
         if (!iqs9151_haptic_play_state_diag(data, 1U)) {
@@ -3176,9 +3190,10 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         if (force_diag_mode) {
             LOG_INF("FSR diag enter raw=%u baseline=%u delta=%d",
                     fsr_raw, data->fsr_touch_baseline_raw, fsr_delta);
-        } else if (frame->finger_count == 1U && (precision_only_origin || tapdrag_active)) {
+        } else if (frame->finger_count == 1U && (moving_context || tapdrag_active)) {
             data->force.precision_active = true;
             data->force.caret_candidate = false;
+            data->force.mode = IQS9151_FORCE_MODE_PRECISION_ONLY;
             if (!iqs9151_haptic_play_state_diag(data, 2U)) {
                 iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_PRECISION);
             }
@@ -3188,6 +3203,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
                    iqs9151_emit_hold_press_owned(data, dev, data->force.button,
                                                 IQS9151_HOLD_OWNER_FORCE)) {
             data->force.button_down_sent = true;
+            data->force.mode = IQS9151_FORCE_MODE_HOLD_DRAG;
         } else if (frame->finger_count == 1U && IS_ENABLED(CONFIG_INPUT_IQS9151_CARET_ENABLE)) {
             data->force.caret_candidate = true;
         }
@@ -3253,16 +3269,13 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     if (!data->force.caret_active &&
         (cursor_moving || abs_x >= FORCE_MOVE_THRESHOLD || abs_y >= FORCE_MOVE_THRESHOLD)) {
         data->force.caret_candidate = false;
-        if (data->force.moving_origin || data->force.overlay_only) {
-            data->force.precision_active = true;
-            if (!data->force.button_down_sent && !data->force.overlay_only &&
-                data->force.button != 0U &&
-                iqs9151_emit_hold_press_owned(data, dev, data->force.button,
-                                             IQS9151_HOLD_OWNER_FORCE)) {
-                data->force.button_down_sent = true;
-            }
-            if (!iqs9151_haptic_play_state_diag(data, 2U)) {
-                iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_PRECISION);
+        if (data->force.mode == IQS9151_FORCE_MODE_PRECISION_ONLY ||
+            data->force.overlay_only) {
+            if (!data->force.precision_active) {
+                data->force.precision_active = true;
+                if (!iqs9151_haptic_play_state_diag(data, 2U)) {
+                    iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_PRECISION);
+                }
             }
         }
         return released_from_hold;
@@ -3396,24 +3409,21 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
         return;
     }
 
-    if (prev_frame.finger_count == 0U && frame->finger_count == 1U) {
-        data->single_finger_session_moved = false;
-    }
     if (frame->finger_count == 1U &&
         (cursor_moving || iqs9151_abs32(frame->rel_x) >= FORCE_MOVE_THRESHOLD ||
          iqs9151_abs32(frame->rel_y) >= FORCE_MOVE_THRESHOLD)) {
         data->single_finger_session_moved = true;
-    } else if (frame->finger_count != 1U) {
+    } else if (prev_frame.finger_count == 0U && frame->finger_count == 1U) {
+        data->single_finger_session_moved = false;
+    } else if (frame->finger_count == 0U) {
         data->single_finger_session_moved = false;
     }
 
     released_from_hold =
         iqs9151_update_force_state(data, frame, &prev_frame, now_ms, cursor_moving);
-    if (!data->force.active) {
-        released_from_hold =
-            iqs9151_update_gesture_sessions(data, frame, &prev_frame, &two_result) ||
-            released_from_hold;
-    }
+    released_from_hold =
+        iqs9151_update_gesture_sessions(data, frame, &prev_frame, &two_result) ||
+        released_from_hold;
     suppress_cursor_tail =
         iqs9151_should_suppress_cursor_for_two_finger_tail(data, frame, &prev_frame,
                                                            &two_result);
