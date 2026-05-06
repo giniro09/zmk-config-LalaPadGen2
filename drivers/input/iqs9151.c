@@ -103,6 +103,11 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #else
 #define CURSOR_HAPTIC_TICK_STEP 0
 #endif
+#if IS_ENABLED(CONFIG_INPUT_IQS9151_HAPTIC_STATE_DIAG)
+#define HAPTIC_STATE_DIAG_GAP_US CONFIG_INPUT_IQS9151_HAPTIC_STATE_DIAG_GAP_US
+#else
+#define HAPTIC_STATE_DIAG_GAP_US 0
+#endif
 #if IS_ENABLED(CONFIG_INPUT_IQS9151_TAP_REPEAT_DIAG)
 #define TAP_REPEAT_DIAG_COUNT CONFIG_INPUT_IQS9151_TAP_REPEAT_DIAG_COUNT
 #define TAP_REPEAT_DIAG_INTERVAL_MS CONFIG_INPUT_IQS9151_TAP_REPEAT_DIAG_INTERVAL_MS
@@ -586,6 +591,21 @@ static void iqs9151_haptic_play_tap(struct iqs9151_data *data) {
     if (data->tap_repeat_remaining > 0U) {
         (void)k_work_reschedule(&data->tap_repeat_work, K_MSEC(TAP_REPEAT_DIAG_INTERVAL_MS));
     }
+}
+
+static bool iqs9151_haptic_play_state_diag(struct iqs9151_data *data, uint8_t pulse_count) {
+    if (!IS_ENABLED(CONFIG_INPUT_IQS9151_HAPTIC_STATE_DIAG) || pulse_count == 0U) {
+        return false;
+    }
+
+    for (uint8_t i = 0U; i < pulse_count; i++) {
+        iqs9151_haptic_play_cursor_tick(data);
+        if ((i + 1U) < pulse_count && HAPTIC_STATE_DIAG_GAP_US > 0) {
+            k_busy_wait(HAPTIC_STATE_DIAG_GAP_US);
+        }
+    }
+
+    return true;
 }
 
 static void iqs9151_cursor_haptic_tick_update(struct iqs9151_data *data,
@@ -3115,7 +3135,9 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
             }
         }
 
-        iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_FORCE);
+        if (!iqs9151_haptic_play_state_diag(data, 1U)) {
+            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_FORCE);
+        }
 
         if (force_diag_mode) {
             LOG_INF("FSR diag enter raw=%u baseline=%u delta=%d",
@@ -3123,7 +3145,9 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         } else if (frame->finger_count == 1U && (moving_context || tapdrag_active)) {
             data->force.precision_active = true;
             data->force.caret_candidate = false;
-            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_PRECISION);
+            if (!iqs9151_haptic_play_state_diag(data, 2U)) {
+                iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_PRECISION);
+            }
         } else if (frame->finger_count == 1U) {
             data->force.caret_candidate = true;
         }
@@ -3182,7 +3206,9 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
                                          IQS9151_HOLD_OWNER_FORCE)) {
             data->force.button_down_sent = true;
         }
-        iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_PRECISION);
+        if (!iqs9151_haptic_play_state_diag(data, 2U)) {
+            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_PRECISION);
+        }
         return released_from_hold;
     }
 
@@ -3205,7 +3231,9 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
             released_from_hold = true;
             data->force.button_down_sent = false;
         }
-        iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_CARET);
+        if (!iqs9151_haptic_play_state_diag(data, 3U)) {
+            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_CARET);
+        }
     }
 
     if (data->force.caret_active) {

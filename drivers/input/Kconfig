@@ -320,6 +320,21 @@ config INPUT_IQS9151_CURSOR_HAPTIC_TICK_STEP
         Motion amount required before one cursor haptic tick is emitted.
         Smaller values feel more textured but can become noisy.
 
+config INPUT_IQS9151_HAPTIC_STATE_DIAG
+    bool "IQS9151 haptic state diagnostic"
+    default n
+    help
+        Use distinct haptic pulse counts for Force, Precision, and Caret state
+        transitions so state changes can be diagnosed without logs.
+
+config INPUT_IQS9151_HAPTIC_STATE_DIAG_GAP_US
+    int "IQS9151 haptic state diagnostic pulse gap (us)"
+    range 500 20000
+    default 2500
+    depends on INPUT_IQS9151_HAPTIC_STATE_DIAG
+    help
+        Extra gap between state-diagnostic haptic pulses.
+
 config INPUT_IQS9151_2F_TAP_ENABLE
     bool "IQS9151 two-finger tap enable"
     default y
