@@ -341,6 +341,7 @@ struct iqs9151_data {
     struct adc_sequence fsr_as;
     uint16_t fsr_sample_buffer;
     uint16_t fsr_stable_raw;
+    bool fsr_stable_valid;
     uint16_t fsr_touch_baseline_raw;
     uint8_t fsr_touch_baseline_fingers;
     int64_t fsr_touch_baseline_started_ms;
@@ -802,6 +803,10 @@ static bool iqs9151_read_fsr(struct iqs9151_data *data, uint16_t *raw_out) {
         }
 
         *raw_out = (uint16_t)(((int16_t)sample < 0) ? 0 : sample);
+
+        if (data->fsr_stable_valid) {
+            *raw_out = (uint16_t)((((uint32_t)data->fsr_stable_raw * 3U) + *raw_out) / 4U);
+        }
     } else {
         int ret = adc_read(data->fsr_adc, &data->fsr_as);
         data->fsr_as.calibrate = false;
@@ -817,6 +822,7 @@ static bool iqs9151_read_fsr(struct iqs9151_data *data, uint16_t *raw_out) {
         *raw_out = data->fsr_stable_raw;
     } else {
         data->fsr_stable_raw = *raw_out;
+        data->fsr_stable_valid = true;
     }
     data->force.fsr_raw = *raw_out;
     return true;
@@ -3865,6 +3871,7 @@ static int iqs9151_init(const struct device *dev) {
     iqs9151_force_reset(data);
     data->last_single_finger_move_ms = 0;
     data->fsr_stable_raw = 0U;
+    data->fsr_stable_valid = false;
     data->fsr_touch_baseline_raw = 0U;
     data->fsr_touch_baseline_fingers = 0U;
     data->fsr_touch_baseline_started_ms = 0;
@@ -3970,6 +3977,7 @@ void iqs9151_test_context_init(void *ctx, const struct device *dev) {
     iqs9151_force_reset(data);
     data->last_single_finger_move_ms = 0;
     data->fsr_stable_raw = 0U;
+    data->fsr_stable_valid = false;
     data->fsr_touch_baseline_raw = 0U;
     data->fsr_touch_baseline_fingers = 0U;
     data->fsr_touch_baseline_started_ms = 0;
