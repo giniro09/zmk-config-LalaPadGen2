@@ -3130,6 +3130,9 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
 
         if (!force_diag_mode && !tapdrag_active) {
             iqs9151_clear_all_click_pending(data);
+            iqs9151_clear_one_finger_click_pending(data);
+            (void)k_work_cancel_delayable(&data->one_finger_click_work);
+            iqs9151_one_finger_reset(&data->one_finger);
             if (data->hold_button != 0U && data->hold_owner == IQS9151_HOLD_OWNER_TAPDRAG) {
                 iqs9151_release_hold(data, dev);
                 released_from_hold = true;
