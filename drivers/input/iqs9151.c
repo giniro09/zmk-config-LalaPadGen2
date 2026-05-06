@@ -3368,13 +3368,13 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
     }
 
     released_from_hold =
-        iqs9151_update_gesture_sessions(data, frame, &prev_frame, &two_result);
+        iqs9151_update_force_state(data, frame, &prev_frame, now_ms, cursor_moving);
+    released_from_hold =
+        iqs9151_update_gesture_sessions(data, frame, &prev_frame, &two_result) ||
+        released_from_hold;
     suppress_cursor_tail =
         iqs9151_should_suppress_cursor_for_two_finger_tail(data, frame, &prev_frame,
                                                            &two_result);
-    released_from_hold =
-        iqs9151_update_force_state(data, frame, &prev_frame, now_ms, cursor_moving) ||
-        released_from_hold;
     suppress_cursor_tail =
         suppress_cursor_tail || data->force.caret_active ||
         (data->force.active && !data->force.precision_active &&
