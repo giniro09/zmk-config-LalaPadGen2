@@ -3245,14 +3245,6 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     const int32_t abs_x = iqs9151_abs32(frame->rel_x);
     const int32_t abs_y = iqs9151_abs32(frame->rel_y);
 
-    if (data->force.precision_active &&
-        !cursor_moving &&
-        abs_x < FORCE_MOVE_THRESHOLD &&
-        abs_y < FORCE_MOVE_THRESHOLD) {
-        data->force.precision_active = false;
-        data->force.quiet_since_ms = now_ms;
-    }
-
     if (!data->force.caret_active &&
         (cursor_moving || abs_x >= FORCE_MOVE_THRESHOLD || abs_y >= FORCE_MOVE_THRESHOLD)) {
         data->force.caret_candidate = false;
