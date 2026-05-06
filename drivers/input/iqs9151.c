@@ -101,6 +101,7 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define CARET_REPEAT_BASE_MS CONFIG_INPUT_IQS9151_CARET_REPEAT_BASE_MS
 #define HAPTIC_FSR_GUARD_MS CONFIG_INPUT_IQS9151_HAPTIC_FSR_GUARD_MS
 #define FORCE_TOUCH_POLL_INTERVAL_MS 20
+#define FORCE_MOVE_CONTEXT_WINDOW_MS 80
 #if IS_ENABLED(CONFIG_INPUT_IQS9151_CURSOR_HAPTIC_TICK_ENABLE)
 #define CURSOR_HAPTIC_TICK_STEP CONFIG_INPUT_IQS9151_CURSOR_HAPTIC_TICK_STEP
 #else
@@ -334,6 +335,7 @@ struct iqs9151_data {
     int32_t scroll_ema_y_fp;
     int32_t cursor_ema_x_fp;
     int32_t cursor_ema_y_fp;
+    int64_t last_single_finger_move_ms;
     const struct device *fsr_adc;
     struct adc_channel_cfg fsr_acc;
     struct adc_sequence fsr_as;
@@ -3056,10 +3058,15 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     bool released_from_hold = false;
     const bool touching = frame->finger_count >= 1U && frame->finger_count <= 3U;
     const bool tapdrag_active = iqs9151_tapdrag_active(data);
-    const bool moving_context =
+    const bool moving_context_now =
         touching && frame->finger_count == 1U &&
         (cursor_moving || iqs9151_abs32(frame->rel_x) >= FORCE_MOVE_THRESHOLD ||
          iqs9151_abs32(frame->rel_y) >= FORCE_MOVE_THRESHOLD);
+    const bool recent_move_context =
+        touching && frame->finger_count == 1U &&
+        ((data->last_single_finger_move_ms != 0) &&
+         ((now_ms - data->last_single_finger_move_ms) <= FORCE_MOVE_CONTEXT_WINDOW_MS));
+    const bool moving_context = moving_context_now || recent_move_context;
     const bool precision_only_origin = moving_context && !tapdrag_active;
     const bool defer_static_one_finger_click =
         !force_diag_mode && frame->finger_count == 1U && !moving_context && !tapdrag_active;
@@ -3389,6 +3396,14 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
         iqs9151_force_poll_update(data, frame);
         iqs9151_update_prev_frame(data, frame, &prev_frame);
         return;
+    }
+
+    if (frame->finger_count == 1U &&
+        (cursor_moving || iqs9151_abs32(frame->rel_x) >= FORCE_MOVE_THRESHOLD ||
+         iqs9151_abs32(frame->rel_y) >= FORCE_MOVE_THRESHOLD)) {
+        data->last_single_finger_move_ms = now_ms;
+    } else if (frame->finger_count == 0U) {
+        data->last_single_finger_move_ms = 0;
     }
 
     released_from_hold =
@@ -3848,6 +3863,7 @@ static int iqs9151_init(const struct device *dev) {
     data->hold_owner = IQS9151_HOLD_OWNER_NONE;
     iqs9151_reset_finger_history(data);
     iqs9151_force_reset(data);
+    data->last_single_finger_move_ms = 0;
     data->fsr_stable_raw = 0U;
     data->fsr_touch_baseline_raw = 0U;
     data->fsr_touch_baseline_fingers = 0U;
@@ -3952,6 +3968,7 @@ void iqs9151_test_context_init(void *ctx, const struct device *dev) {
     data->hold_owner = IQS9151_HOLD_OWNER_NONE;
     iqs9151_reset_finger_history(data);
     iqs9151_force_reset(data);
+    data->last_single_finger_move_ms = 0;
     data->fsr_stable_raw = 0U;
     data->fsr_touch_baseline_raw = 0U;
     data->fsr_touch_baseline_fingers = 0U;
