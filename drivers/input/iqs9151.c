@@ -3174,8 +3174,10 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
             }
         } else if (frame->finger_count == 1U &&
                    !IS_ENABLED(CONFIG_INPUT_IQS9151_CARET_ENABLE) &&
-                   data->force.button != 0U) {
-            (void)iqs9151_emit_click(data, dev, data->force.button);
+                   data->force.button != 0U &&
+                   iqs9151_emit_hold_press_owned(data, dev, data->force.button,
+                                                IQS9151_HOLD_OWNER_FORCE)) {
+            data->force.button_down_sent = true;
         } else if (frame->finger_count == 1U && IS_ENABLED(CONFIG_INPUT_IQS9151_CARET_ENABLE)) {
             data->force.caret_candidate = true;
         }
@@ -3220,6 +3222,12 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         if (force_diag_mode) {
             LOG_INF("FSR diag release raw=%u baseline=%u delta=%d",
                     fsr_raw, data->fsr_touch_baseline_raw, fsr_delta);
+        }
+        if (!force_diag_mode && touching) {
+            data->fsr_touch_baseline_raw = fsr_raw;
+            data->fsr_touch_baseline_fingers = frame->finger_count;
+            data->fsr_touch_baseline_started_ms = now_ms;
+            data->fsr_touch_baseline_valid = true;
         }
         iqs9151_force_reset(data);
         return released_from_hold;
