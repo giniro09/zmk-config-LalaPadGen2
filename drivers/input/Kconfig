@@ -210,7 +210,7 @@ config INPUT_IQS9151_CURSOR_INERTIA_MIN_AVG_SPEED
 
 config INPUT_IQS9151_FORCE_THRESHOLD
     int "IQS9151 FSR force threshold"
-    range 1 4095
+    range 1 32767
     default 700
     help
       Minimum FSR delta from the touch-start baseline required to enter
@@ -218,7 +218,7 @@ config INPUT_IQS9151_FORCE_THRESHOLD
 
 config INPUT_IQS9151_FORCE_RELEASE_THRESHOLD
     int "IQS9151 FSR release threshold"
-    range 1 4095
+    range 1 32767
     default 450
     help
       Minimum FSR delta from the touch-start baseline required to stay in
