@@ -3394,8 +3394,7 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
     suppress_cursor_tail =
         suppress_cursor_tail || data->force.caret_active ||
         (data->force.active && !data->force.precision_active &&
-         (data->force.button_down_sent || data->force.overlay_only ||
-          data->force.caret_candidate));
+         (data->force.overlay_only || data->force.caret_candidate));
 
     if (frame->finger_count == 3U || data->three_active) {
         iqs9151_inertia_cancel(&data->inertia_scroll, &data->inertia_scroll_work);
