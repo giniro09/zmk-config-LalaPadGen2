@@ -7,7 +7,6 @@
 
 #include <zephyr/device.h>
 #include <zephyr/dt-bindings/input/input-event-codes.h>
-#include <zephyr/sys/util.h>
 #include <drivers/input_processor.h>
 
 #include <zmk/iqs9151_runtime.h>
@@ -44,7 +43,7 @@ static int ip_precision_scaler_handle_event(const struct device *dev, struct inp
 #endif
 
     const int32_t original = event->value;
-    const int32_t magnitude = ABS(original);
+    const int32_t magnitude = (original < 0) ? -original : original;
     int32_t scale_x10 = PRECISION_LARGE_SCALE_X10;
 
     if (magnitude <= PRECISION_SMALL_THRESHOLD) {
