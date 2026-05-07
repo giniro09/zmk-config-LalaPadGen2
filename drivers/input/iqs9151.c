@@ -499,6 +499,30 @@ static bool iqs9151_force_return(struct iqs9151_data *data, int32_t signed_delta
     return value;
 }
 
+static uint16_t iqs9151_force_absolute_measure(uint16_t raw) {
+    if (!FORCE_INVERT_ANALOG) {
+        return raw;
+    }
+
+    /*
+     * For inverted analog wiring, pressing lowers the raw ADC value. Map that
+     * into a synthetic "force" value that still grows upward so the rest of
+     * the state machine can keep using the same enter/release thresholds.
+     *
+     * With this mapping:
+     * - raw >= FORCE_THRESHOLD            -> force 0
+     * - raw == FORCE_RELEASE_THRESHOLD    -> force FORCE_THRESHOLD
+     * - raw == FORCE_THRESHOLD            -> force FORCE_RELEASE_THRESHOLD
+     */
+    if (raw >= FORCE_THRESHOLD) {
+        return 0U;
+    }
+
+    const int32_t force =
+        (int32_t)FORCE_THRESHOLD - (int32_t)raw + (int32_t)FORCE_RELEASE_THRESHOLD;
+    return (uint16_t)CLAMP(force, 0, UINT16_MAX);
+}
+
 static bool iqs9151_tapdrag_active(const struct iqs9151_data *data) {
     return (data->hold_owner == IQS9151_HOLD_OWNER_TAPDRAG) &&
            ((data->one_finger.active && data->one_finger.tapdrag_second_touch &&
@@ -3151,7 +3175,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         signed_delta = force_measure;
         fsr_delta = force_measure;
     } else if (FORCE_USE_ABSOLUTE) {
-        force_measure = FORCE_INVERT_ANALOG ? (uint16_t)(INT16_MAX - fsr_raw) : fsr_raw;
+        force_measure = iqs9151_force_absolute_measure(fsr_raw);
         signed_delta = force_measure;
         fsr_delta = force_measure;
     } else {
