@@ -3190,11 +3190,15 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
-    if (!data->force.active && fsr_delta < FORCE_THRESHOLD) {
+    const bool force_rising = signed_delta >= data->force.fsr_signed_delta_raw;
+
+    if (!data->force.active &&
+        (fsr_delta < FORCE_THRESHOLD || (!force_diag_mode && !force_rising))) {
         data->force.enter_candidate_since_ms = 0;
     }
     if (!data->force.active &&
-        (touching || force_diag_mode) && fsr_delta >= FORCE_THRESHOLD) {
+        (touching || force_diag_mode) && fsr_delta >= FORCE_THRESHOLD &&
+        (force_diag_mode || force_rising)) {
         if (data->force.enter_candidate_since_ms == 0) {
             data->force.enter_candidate_since_ms = now_ms;
         }
