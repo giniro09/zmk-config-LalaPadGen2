@@ -308,6 +308,7 @@ struct iqs9151_force_state {
     bool precision_active;
     bool caret_candidate;
     bool caret_active;
+    bool rearm_pending;
     uint8_t finger_count;
     uint16_t button;
     uint16_t fsr_raw;
@@ -315,6 +316,7 @@ struct iqs9151_force_state {
     int64_t quiet_since_ms;
     int64_t enter_candidate_since_ms;
     int64_t release_candidate_since_ms;
+    int64_t rearm_ready_since_ms;
     enum iqs9151_force_mode mode;
     uint16_t center_x;
     uint16_t center_y;
@@ -471,12 +473,14 @@ static void iqs9151_force_reset(struct iqs9151_data *data) {
     data->force.precision_active = false;
     data->force.caret_candidate = false;
     data->force.caret_active = false;
+    data->force.rearm_pending = false;
     data->force.finger_count = 0U;
     data->force.button = 0U;
     data->force.quiet_since_ms = 0;
     data->force.fsr_delta_raw = 0U;
     data->force.enter_candidate_since_ms = 0;
     data->force.release_candidate_since_ms = 0;
+    data->force.rearm_ready_since_ms = 0;
     data->force.center_x = 0U;
     data->force.center_y = 0U;
     data->force.caret_dx = 0;
@@ -3164,7 +3168,24 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     }
     data->force.fsr_delta_raw = (uint16_t)CLAMP(fsr_delta, 0, UINT16_MAX);
 
-    if (!data->force.active && (touching || force_diag_mode) && fsr_delta >= FORCE_THRESHOLD) {
+    if (!data->force.active && data->force.rearm_pending) {
+        if (!touching) {
+            data->force.rearm_pending = false;
+            data->force.rearm_ready_since_ms = 0;
+        } else if (fsr_delta <= (FORCE_RELEASE_THRESHOLD / 2)) {
+            if (data->force.rearm_ready_since_ms == 0) {
+                data->force.rearm_ready_since_ms = now_ms;
+            } else if ((now_ms - data->force.rearm_ready_since_ms) >= 10) {
+                data->force.rearm_pending = false;
+                data->force.rearm_ready_since_ms = 0;
+            }
+        } else {
+            data->force.rearm_ready_since_ms = 0;
+        }
+    }
+
+    if (!data->force.active && !data->force.rearm_pending &&
+        (touching || force_diag_mode) && fsr_delta >= FORCE_THRESHOLD) {
         if (data->force.enter_candidate_since_ms == 0) {
             data->force.enter_candidate_since_ms = now_ms;
         }
@@ -3280,6 +3301,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
             data->fsr_touch_baseline_valid = true;
         }
         iqs9151_force_reset(data);
+        data->force.rearm_pending = true;
         return released_from_hold;
     }
 
