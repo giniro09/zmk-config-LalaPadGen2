@@ -3130,8 +3130,6 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     const bool precision_only_origin = moving_context && !tapdrag_active;
     const bool defer_static_one_finger_click =
         !force_diag_mode && frame->finger_count == 1U && !moving_context && !tapdrag_active;
-    const int32_t prev_signed_delta = data->force.fsr_signed_delta_raw;
-
     if (!iqs9151_read_fsr(data, &fsr_raw)) {
         return false;
     }
@@ -3159,15 +3157,6 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
             data->fsr_touch_baseline_fingers = frame->finger_count;
             data->fsr_touch_baseline_started_ms = now_ms;
             data->fsr_touch_baseline_valid = true;
-            if (prev_frame->finger_count == 0U) {
-                /*
-                 * Fresh touch sessions should be able to enter force/precision
-                 * immediately. The stricter re-arm path only matters after a
-                 * previous force release within the same touch.
-                 */
-                data->force.armed = true;
-                data->force.arm_ready_since_ms = 0;
-            }
         } else if (!data->force.active &&
                    (now_ms - data->fsr_touch_baseline_started_ms) < FORCE_BASELINE_SETTLE_MS) {
             /*
@@ -3201,32 +3190,11 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
-    if (!data->force.active) {
-        if (!touching) {
-            data->force.armed = false;
-            data->force.arm_ready_since_ms = 0;
-        } else if (prev_frame->finger_count == 0U) {
-            /* Keep fresh-touch arming from the baseline-init path. */
-        } else if (fsr_delta <= MAX(1, (FORCE_RELEASE_THRESHOLD / 2))) {
-            if (data->force.arm_ready_since_ms == 0) {
-                data->force.arm_ready_since_ms = now_ms;
-            } else if ((now_ms - data->force.arm_ready_since_ms) >= 12) {
-                data->force.armed = true;
-            }
-        } else {
-            data->force.arm_ready_since_ms = 0;
-            data->force.armed = false;
-        }
-    }
-
-    const bool force_rising = signed_delta > prev_signed_delta;
-    if (!data->force.active &&
-        (!data->force.armed || fsr_delta < FORCE_THRESHOLD || (!force_diag_mode && !force_rising))) {
+    if (!data->force.active && fsr_delta < FORCE_THRESHOLD) {
         data->force.enter_candidate_since_ms = 0;
     }
-    if (!data->force.active && data->force.armed &&
-        (touching || force_diag_mode) && fsr_delta >= FORCE_THRESHOLD &&
-        (force_diag_mode || force_rising)) {
+    if (!data->force.active &&
+        (touching || force_diag_mode) && fsr_delta >= FORCE_THRESHOLD) {
         if (data->force.enter_candidate_since_ms == 0) {
             data->force.enter_candidate_since_ms = now_ms;
         }
@@ -3244,8 +3212,6 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         data->force.overlay_only = tapdrag_active;
         data->force.moving_origin = precision_only_origin;
         data->force.mode = IQS9151_FORCE_MODE_NONE;
-        data->force.armed = false;
-        data->force.arm_ready_since_ms = 0;
         data->force.quiet_since_ms = now_ms;
         (void)iqs9151_get_finger1_xy(frame, prev_frame, &center_x, &center_y);
         data->force.center_x = center_x;
