@@ -812,7 +812,13 @@ static bool iqs9151_read_fsr(struct iqs9151_data *data, uint16_t *raw_out) {
         *raw_out = (uint16_t)(((int16_t)sample < 0) ? 0 : sample);
 
         if (data->fsr_stable_valid) {
-            *raw_out = (uint16_t)((((uint32_t)data->fsr_stable_raw * 3U) + *raw_out) / 4U);
+            const bool precision_tracking =
+                data->force.active && data->force.mode == IQS9151_FORCE_MODE_PRECISION_ONLY;
+            if (precision_tracking) {
+                *raw_out = (uint16_t)((((uint32_t)data->fsr_stable_raw) + *raw_out) / 2U);
+            } else {
+                *raw_out = (uint16_t)((((uint32_t)data->fsr_stable_raw * 3U) + *raw_out) / 4U);
+            }
         }
     } else {
         int ret = adc_read(data->fsr_adc, &data->fsr_as);
@@ -3246,8 +3252,10 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
             if (data->force.release_candidate_since_ms == 0) {
                 data->force.release_candidate_since_ms = now_ms;
             }
-            if ((now_ms - data->force.release_candidate_since_ms) <
-                FORCE_RELEASE_DEBOUNCE_MS) {
+            const int32_t release_debounce_ms =
+                (data->force.mode == IQS9151_FORCE_MODE_PRECISION_ONLY) ? 10 :
+                FORCE_RELEASE_DEBOUNCE_MS;
+            if ((now_ms - data->force.release_candidate_since_ms) < release_debounce_ms) {
                 return released_from_hold;
             }
         }
