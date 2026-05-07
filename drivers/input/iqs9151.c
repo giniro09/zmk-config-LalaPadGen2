@@ -3286,9 +3286,6 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
             data->force.precision_active = true;
             data->force.caret_candidate = false;
             data->force.mode = IQS9151_FORCE_MODE_PRECISION_ONLY;
-            if (!iqs9151_haptic_play_state_diag(data, 2U)) {
-                iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_PRECISION);
-            }
         } else if (frame->finger_count == 1U && IS_ENABLED(CONFIG_INPUT_IQS9151_CARET_ENABLE)) {
             data->force.caret_candidate = true;
         }
@@ -3357,9 +3354,6 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
             data->force.overlay_only) {
             if (!data->force.precision_active) {
                 data->force.precision_active = true;
-                if (!iqs9151_haptic_play_state_diag(data, 2U)) {
-                    iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_PRECISION);
-                }
             }
         }
         return iqs9151_force_return(data, signed_delta, released_from_hold);
