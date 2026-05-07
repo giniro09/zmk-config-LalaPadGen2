@@ -95,7 +95,8 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define FORCE_ENTER_DEBOUNCE_MS CONFIG_INPUT_IQS9151_FORCE_ENTER_DEBOUNCE_MS
 #define FORCE_RELEASE_DEBOUNCE_MS CONFIG_INPUT_IQS9151_FORCE_RELEASE_DEBOUNCE_MS
 #define FORCE_MOVE_THRESHOLD CONFIG_INPUT_IQS9151_FORCE_MOVE_THRESHOLD
-#define FORCE_MOVING_CONTEXT_WINDOW_MS 80
+#define FORCE_MOVING_CONTEXT_WINDOW_MS 140
+#define FORCE_STATIC_CLASSIFY_DELAY_MS 25
 #define CARET_HOLD_MS CONFIG_INPUT_IQS9151_CARET_HOLD_MS
 #define CARET_DEADZONE CONFIG_INPUT_IQS9151_CARET_DEADZONE
 #define CARET_REPEAT_INITIAL_MS CONFIG_INPUT_IQS9151_CARET_REPEAT_INITIAL_MS
@@ -3117,10 +3118,16 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     bool released_from_hold = false;
     const bool touching = frame->finger_count >= 1U && frame->finger_count <= 3U;
     const bool tapdrag_active = iqs9151_tapdrag_active(data);
-    const bool moving_context =
-        touching && frame->finger_count == 1U &&
+    const int32_t enter_abs_x = iqs9151_abs32(frame->rel_x);
+    const int32_t enter_abs_y = iqs9151_abs32(frame->rel_y);
+    const bool immediate_motion_context =
+        cursor_moving || enter_abs_x >= FORCE_MOVE_THRESHOLD || enter_abs_y >= FORCE_MOVE_THRESHOLD;
+    const bool recent_motion_context =
         data->last_single_finger_motion_ms != 0 &&
         (now_ms - data->last_single_finger_motion_ms) <= FORCE_MOVING_CONTEXT_WINDOW_MS;
+    const bool moving_context =
+        touching && frame->finger_count == 1U &&
+        (immediate_motion_context || recent_motion_context);
     const bool precision_only_origin = moving_context && !tapdrag_active;
     const bool defer_static_one_finger_click =
         !force_diag_mode && frame->finger_count == 1U && !moving_context && !tapdrag_active;
@@ -3265,13 +3272,6 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
             if (!iqs9151_haptic_play_state_diag(data, 2U)) {
                 iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_PRECISION);
             }
-        } else if (frame->finger_count == 1U &&
-                   !IS_ENABLED(CONFIG_INPUT_IQS9151_CARET_ENABLE) &&
-                   data->force.button != 0U &&
-                   iqs9151_emit_hold_press_owned(data, dev, data->force.button,
-                                                IQS9151_HOLD_OWNER_FORCE)) {
-            data->force.button_down_sent = true;
-            data->force.mode = IQS9151_FORCE_MODE_HOLD_DRAG;
         } else if (frame->finger_count == 1U && IS_ENABLED(CONFIG_INPUT_IQS9151_CARET_ENABLE)) {
             data->force.caret_candidate = true;
         }
@@ -3310,10 +3310,6 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         if (data->force.button_down_sent && data->hold_owner == IQS9151_HOLD_OWNER_FORCE) {
             iqs9151_release_hold(data, dev);
             released_from_hold = true;
-        } else if (!force_diag_mode && !IS_ENABLED(CONFIG_INPUT_IQS9151_HAPTIC_STATE_DIAG) &&
-                   data->force.finger_count == 1U && !data->force.caret_active &&
-                   !data->force.precision_active && data->force.button != 0U) {
-            (void)iqs9151_emit_click(data, dev, data->force.button);
         }
         if (force_diag_mode) {
             LOG_INF("FSR diag release raw=%u baseline=%u delta=%d",
@@ -3335,12 +3331,12 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
-    const int32_t abs_x = iqs9151_abs32(frame->rel_x);
-    const int32_t abs_y = iqs9151_abs32(frame->rel_y);
-
     if (!data->force.caret_active &&
-        (cursor_moving || abs_x >= FORCE_MOVE_THRESHOLD || abs_y >= FORCE_MOVE_THRESHOLD)) {
+        immediate_motion_context) {
         data->force.caret_candidate = false;
+        if (data->force.mode == IQS9151_FORCE_MODE_NONE) {
+            data->force.mode = IQS9151_FORCE_MODE_PRECISION_ONLY;
+        }
         if (data->force.mode == IQS9151_FORCE_MODE_PRECISION_ONLY ||
             data->force.overlay_only) {
             if (!data->force.precision_active) {
@@ -3355,6 +3351,19 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
 
     if (data->force.precision_active) {
         data->force.caret_candidate = false;
+        return iqs9151_force_return(data, signed_delta, released_from_hold);
+    }
+
+    if (frame->finger_count == 1U &&
+        !IS_ENABLED(CONFIG_INPUT_IQS9151_CARET_ENABLE) &&
+        data->force.mode == IQS9151_FORCE_MODE_NONE &&
+        data->force.button != 0U) {
+        if ((now_ms - data->force.quiet_since_ms) >= FORCE_STATIC_CLASSIFY_DELAY_MS &&
+            iqs9151_emit_hold_press_owned(data, dev, data->force.button,
+                                         IQS9151_HOLD_OWNER_FORCE)) {
+            data->force.button_down_sent = true;
+            data->force.mode = IQS9151_FORCE_MODE_HOLD_DRAG;
+        }
         return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
