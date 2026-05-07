@@ -3159,6 +3159,15 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
             data->fsr_touch_baseline_fingers = frame->finger_count;
             data->fsr_touch_baseline_started_ms = now_ms;
             data->fsr_touch_baseline_valid = true;
+            if (prev_frame->finger_count == 0U) {
+                /*
+                 * Fresh touch sessions should be able to enter force/precision
+                 * immediately. The stricter re-arm path only matters after a
+                 * previous force release within the same touch.
+                 */
+                data->force.armed = true;
+                data->force.arm_ready_since_ms = 0;
+            }
         } else if (!data->force.active &&
                    (now_ms - data->fsr_touch_baseline_started_ms) < FORCE_BASELINE_SETTLE_MS) {
             /*
@@ -3196,6 +3205,8 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         if (!touching) {
             data->force.armed = false;
             data->force.arm_ready_since_ms = 0;
+        } else if (prev_frame->finger_count == 0U) {
+            /* Keep fresh-touch arming from the baseline-init path. */
         } else if (fsr_delta <= MAX(1, (FORCE_RELEASE_THRESHOLD / 2))) {
             if (data->force.arm_ready_since_ms == 0) {
                 data->force.arm_ready_since_ms = now_ms;
