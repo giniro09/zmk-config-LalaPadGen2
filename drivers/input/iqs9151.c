@@ -3144,8 +3144,9 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     const bool tapdrag_active = iqs9151_tapdrag_active(data);
     const int32_t enter_abs_x = iqs9151_abs32(frame->rel_x);
     const int32_t enter_abs_y = iqs9151_abs32(frame->rel_y);
+    const int32_t enter_motion_total = enter_abs_x + enter_abs_y;
     const bool immediate_motion_context =
-        cursor_moving || enter_abs_x >= FORCE_MOVE_THRESHOLD || enter_abs_y >= FORCE_MOVE_THRESHOLD;
+        cursor_moving && enter_motion_total >= MAX(1, FORCE_MOVE_THRESHOLD / 2);
     const bool recent_motion_context =
         data->last_single_finger_motion_ms != 0 &&
         (now_ms - data->last_single_finger_motion_ms) <= FORCE_MOVING_CONTEXT_WINDOW_MS;
@@ -3505,8 +3506,9 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
     }
 
     if (prev_frame.finger_count == 1U && frame->finger_count == 1U &&
-        (cursor_moving || iqs9151_abs32(frame->rel_x) >= FORCE_MOVE_THRESHOLD ||
-         iqs9151_abs32(frame->rel_y) >= FORCE_MOVE_THRESHOLD)) {
+        cursor_moving &&
+        (iqs9151_abs32(frame->rel_x) + iqs9151_abs32(frame->rel_y)) >=
+            MAX(1, FORCE_MOVE_THRESHOLD / 2)) {
         data->last_single_finger_motion_ms = now_ms;
     } else if (frame->finger_count == 0U) {
         data->last_single_finger_motion_ms = 0;
