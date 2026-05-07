@@ -313,10 +313,12 @@ struct iqs9151_force_state {
     uint16_t button;
     uint16_t fsr_raw;
     uint16_t fsr_delta_raw;
+    int32_t fsr_signed_delta_raw;
     int64_t quiet_since_ms;
     int64_t enter_candidate_since_ms;
     int64_t release_candidate_since_ms;
     int64_t rearm_ready_since_ms;
+    int64_t rearm_block_until_ms;
     enum iqs9151_force_mode mode;
     uint16_t center_x;
     uint16_t center_y;
@@ -478,14 +480,22 @@ static void iqs9151_force_reset(struct iqs9151_data *data) {
     data->force.button = 0U;
     data->force.quiet_since_ms = 0;
     data->force.fsr_delta_raw = 0U;
+    data->force.fsr_signed_delta_raw = 0;
     data->force.enter_candidate_since_ms = 0;
     data->force.release_candidate_since_ms = 0;
     data->force.rearm_ready_since_ms = 0;
+    data->force.rearm_block_until_ms = 0;
     data->force.center_x = 0U;
     data->force.center_y = 0U;
     data->force.caret_dx = 0;
     data->force.caret_dy = 0;
     data->force.repeat_code = 0U;
+}
+
+static bool iqs9151_force_return(struct iqs9151_data *data, int32_t signed_delta,
+                                 bool value) {
+    data->force.fsr_signed_delta_raw = signed_delta;
+    return value;
 }
 
 static bool iqs9151_tapdrag_active(const struct iqs9151_data *data) {
@@ -3103,6 +3113,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     const bool force_diag_mode = IS_ENABLED(CONFIG_INPUT_IQS9151_FSR_DIAG_MODE);
     uint16_t fsr_raw = 0U;
     int32_t fsr_delta = 0;
+    int32_t signed_delta = 0;
     bool released_from_hold = false;
     const bool touching = frame->finger_count >= 1U && frame->finger_count <= 3U;
     const bool tapdrag_active = iqs9151_tapdrag_active(data);
@@ -3113,6 +3124,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     const bool precision_only_origin = moving_context && !tapdrag_active;
     const bool defer_static_one_finger_click =
         !force_diag_mode && frame->finger_count == 1U && !moving_context && !tapdrag_active;
+    const int32_t prev_signed_delta = data->force.fsr_signed_delta_raw;
 
     if (!iqs9151_read_fsr(data, &fsr_raw)) {
         return false;
@@ -3128,6 +3140,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         data->fsr_touch_baseline_fingers = 0U;
         data->fsr_touch_baseline_started_ms = now_ms;
         data->fsr_touch_baseline_valid = true;
+        signed_delta = fsr_raw;
         fsr_delta = fsr_raw;
     } else {
         if (!touching) {
@@ -3159,10 +3172,11 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         }
 
         if (data->fsr_touch_baseline_valid) {
-            if (!FORCE_INVERT_ANALOG && fsr_raw > data->fsr_touch_baseline_raw) {
-                fsr_delta = (int32_t)fsr_raw - (int32_t)data->fsr_touch_baseline_raw;
-            } else if (FORCE_INVERT_ANALOG && fsr_raw < data->fsr_touch_baseline_raw) {
-                fsr_delta = (int32_t)data->fsr_touch_baseline_raw - (int32_t)fsr_raw;
+            signed_delta = FORCE_INVERT_ANALOG
+                               ? ((int32_t)data->fsr_touch_baseline_raw - (int32_t)fsr_raw)
+                               : ((int32_t)fsr_raw - (int32_t)data->fsr_touch_baseline_raw);
+            if (signed_delta > 0) {
+                fsr_delta = signed_delta;
             }
         }
     }
@@ -3172,25 +3186,36 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         if (!touching) {
             data->force.rearm_pending = false;
             data->force.rearm_ready_since_ms = 0;
-        } else if (fsr_delta <= (FORCE_RELEASE_THRESHOLD / 2)) {
+        } else if (fsr_delta <= MAX(1, (FORCE_RELEASE_THRESHOLD / 4))) {
             if (data->force.rearm_ready_since_ms == 0) {
                 data->force.rearm_ready_since_ms = now_ms;
-            } else if ((now_ms - data->force.rearm_ready_since_ms) >= 10) {
+            } else if ((now_ms - data->force.rearm_ready_since_ms) >= 20) {
                 data->force.rearm_pending = false;
                 data->force.rearm_ready_since_ms = 0;
+                data->force.enter_candidate_since_ms = 0;
+                data->fsr_touch_baseline_raw = fsr_raw;
+                data->fsr_touch_baseline_fingers = frame->finger_count;
+                data->fsr_touch_baseline_started_ms = now_ms;
+                data->fsr_touch_baseline_valid = touching;
             }
         } else {
             data->force.rearm_ready_since_ms = 0;
         }
     }
 
+    if (!data->force.active && now_ms < data->force.rearm_block_until_ms) {
+        return iqs9151_force_return(data, signed_delta, released_from_hold);
+    }
+
+    const bool force_rising = signed_delta > prev_signed_delta;
     if (!data->force.active && !data->force.rearm_pending &&
-        (touching || force_diag_mode) && fsr_delta >= FORCE_THRESHOLD) {
+        (touching || force_diag_mode) && fsr_delta >= FORCE_THRESHOLD &&
+        (force_diag_mode || force_rising)) {
         if (data->force.enter_candidate_since_ms == 0) {
             data->force.enter_candidate_since_ms = now_ms;
         }
         if ((now_ms - data->force.enter_candidate_since_ms) < FORCE_ENTER_DEBOUNCE_MS) {
-            return released_from_hold;
+            return iqs9151_force_return(data, signed_delta, released_from_hold);
         }
 
         uint16_t center_x = 0U;
@@ -3256,7 +3281,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     }
 
     if (!data->force.active) {
-        return released_from_hold;
+        return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
     const bool immediate_release =
@@ -3277,7 +3302,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
                 (data->force.mode == IQS9151_FORCE_MODE_PRECISION_ONLY) ? 0 :
                 FORCE_RELEASE_DEBOUNCE_MS;
             if ((now_ms - data->force.release_candidate_since_ms) < release_debounce_ms) {
-                return released_from_hold;
+                return iqs9151_force_return(data, signed_delta, released_from_hold);
             }
         }
 
@@ -3302,11 +3327,12 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         }
         iqs9151_force_reset(data);
         data->force.rearm_pending = true;
-        return released_from_hold;
+        data->force.rearm_block_until_ms = now_ms + 40;
+        return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
     if (force_diag_mode) {
-        return released_from_hold;
+        return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
     const int32_t abs_x = iqs9151_abs32(frame->rel_x);
@@ -3324,25 +3350,25 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
                 }
             }
         }
-        return released_from_hold;
+        return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
     if (data->force.precision_active) {
         data->force.caret_candidate = false;
-        return released_from_hold;
+        return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
     if (!IS_ENABLED(CONFIG_INPUT_IQS9151_CARET_ENABLE)) {
-        return released_from_hold;
+        return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
     if (!data->force.caret_candidate && !data->force.caret_active) {
-        return released_from_hold;
+        return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
     if (frame->finger_count != 1U) {
         data->force.caret_candidate = false;
-        return released_from_hold;
+        return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
     if (!data->force.caret_active &&
@@ -3390,7 +3416,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         }
     }
 
-    return released_from_hold;
+    return iqs9151_force_return(data, signed_delta, released_from_hold);
 }
 
 static void iqs9151_report_frame_events(const struct device *dev,
