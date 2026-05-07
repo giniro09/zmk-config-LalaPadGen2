@@ -815,7 +815,7 @@ static bool iqs9151_read_fsr(struct iqs9151_data *data, uint16_t *raw_out) {
             const bool precision_tracking =
                 data->force.active && data->force.mode == IQS9151_FORCE_MODE_PRECISION_ONLY;
             if (precision_tracking) {
-                *raw_out = (uint16_t)((((uint32_t)data->fsr_stable_raw) + *raw_out) / 2U);
+                *raw_out = *raw_out;
             } else {
                 *raw_out = (uint16_t)((((uint32_t)data->fsr_stable_raw * 3U) + *raw_out) / 4U);
             }
@@ -3253,7 +3253,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
                 data->force.release_candidate_since_ms = now_ms;
             }
             const int32_t release_debounce_ms =
-                (data->force.mode == IQS9151_FORCE_MODE_PRECISION_ONLY) ? 10 :
+                (data->force.mode == IQS9151_FORCE_MODE_PRECISION_ONLY) ? 0 :
                 FORCE_RELEASE_DEBOUNCE_MS;
             if ((now_ms - data->force.release_candidate_since_ms) < release_debounce_ms) {
                 return released_from_hold;
