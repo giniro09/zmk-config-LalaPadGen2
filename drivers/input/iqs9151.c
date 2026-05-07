@@ -3275,8 +3275,10 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
 
         }
 
-        if (!iqs9151_haptic_play_state_diag(data, 1U)) {
-            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_FORCE);
+        if (!(frame->finger_count == 1U && (moving_context || tapdrag_active))) {
+            if (!iqs9151_haptic_play_state_diag(data, 1U)) {
+                iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_FORCE);
+            }
         }
 
         if (force_diag_mode) {
