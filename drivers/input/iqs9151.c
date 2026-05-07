@@ -3170,7 +3170,21 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         signed_delta = force_measure;
         fsr_delta = force_measure;
     } else if (FORCE_USE_ABSOLUTE) {
-        if (!data->fsr_absolute_zero_valid) {
+        if (!touching && !data->force.active) {
+            if (!data->fsr_absolute_zero_valid) {
+                data->fsr_absolute_zero_raw = fsr_raw;
+                data->fsr_absolute_zero_valid = true;
+            } else {
+                /*
+                 * Let the unloaded FSR idle point settle over time after boot
+                 * and after mechanism creep. This keeps "absolute" mode tied to
+                 * the actual no-force state instead of a single possibly-wrong
+                 * startup sample.
+                 */
+                data->fsr_absolute_zero_raw =
+                    (uint16_t)((((uint32_t)data->fsr_absolute_zero_raw) * 7U) + fsr_raw) / 8U;
+            }
+        } else if (!data->fsr_absolute_zero_valid) {
             data->fsr_absolute_zero_raw = fsr_raw;
             data->fsr_absolute_zero_valid = true;
         }
