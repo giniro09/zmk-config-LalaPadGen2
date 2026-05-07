@@ -352,7 +352,9 @@ struct iqs9151_data {
     struct adc_sequence fsr_as;
     uint16_t fsr_sample_buffer;
     uint16_t fsr_stable_raw;
+    uint16_t fsr_absolute_zero_raw;
     bool fsr_stable_valid;
+    bool fsr_absolute_zero_valid;
     uint16_t fsr_touch_baseline_raw;
     uint8_t fsr_touch_baseline_fingers;
     int64_t fsr_touch_baseline_started_ms;
@@ -499,28 +501,20 @@ static bool iqs9151_force_return(struct iqs9151_data *data, int32_t signed_delta
     return value;
 }
 
-static uint16_t iqs9151_force_absolute_measure(uint16_t raw) {
-    if (!FORCE_INVERT_ANALOG) {
-        return raw;
-    }
+static uint16_t iqs9151_force_absolute_measure(const struct iqs9151_data *data, uint16_t raw) {
+    const uint16_t zero = data->fsr_absolute_zero_raw;
 
     /*
-     * For inverted analog wiring, pressing lowers the raw ADC value. Map that
-     * into a synthetic "force" value that still grows upward so the rest of
-     * the state machine can keep using the same enter/release thresholds.
-     *
-     * With this mapping:
-     * - raw >= FORCE_THRESHOLD            -> force 0
-     * - raw == FORCE_RELEASE_THRESHOLD    -> force FORCE_THRESHOLD
-     * - raw == FORCE_THRESHOLD            -> force FORCE_RELEASE_THRESHOLD
+     * In absolute mode, treat the startup idle reading as "zero force" and
+     * measure only how far the live raw value moves away from that point.
+     * This keeps the thresholds intuitive after the mechanism changes the
+     * unloaded sensor bias.
      */
-    if (raw >= FORCE_THRESHOLD) {
-        return 0U;
+    if (!FORCE_INVERT_ANALOG) {
+        return raw > zero ? (uint16_t)(raw - zero) : 0U;
     }
 
-    const int32_t force =
-        (int32_t)FORCE_THRESHOLD - (int32_t)raw + (int32_t)FORCE_RELEASE_THRESHOLD;
-    return (uint16_t)CLAMP(force, 0, UINT16_MAX);
+    return raw < zero ? (uint16_t)(zero - raw) : 0U;
 }
 
 static bool iqs9151_tapdrag_active(const struct iqs9151_data *data) {
@@ -3176,7 +3170,11 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         signed_delta = force_measure;
         fsr_delta = force_measure;
     } else if (FORCE_USE_ABSOLUTE) {
-        force_measure = iqs9151_force_absolute_measure(fsr_raw);
+        if (!data->fsr_absolute_zero_valid) {
+            data->fsr_absolute_zero_raw = fsr_raw;
+            data->fsr_absolute_zero_valid = true;
+        }
+        force_measure = iqs9151_force_absolute_measure(data, fsr_raw);
         signed_delta = force_measure;
         fsr_delta = force_measure;
     } else {

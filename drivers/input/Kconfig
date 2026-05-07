@@ -213,16 +213,21 @@ config INPUT_IQS9151_FORCE_THRESHOLD
     range 1 32767
     default 700
     help
-      Minimum FSR delta from the touch-start baseline required to enter
-      force mode.
+      Minimum force value required to enter force mode.
+
+      In baseline mode, this is the delta from the touch-start baseline.
+      In absolute mode, this is the distance from the startup idle reading.
 
 config INPUT_IQS9151_FORCE_RELEASE_THRESHOLD
     int "IQS9151 FSR release threshold"
     range 1 32767
     default 450
     help
-      Minimum FSR delta from the touch-start baseline required to stay in
-      force mode after hysteresis is applied.
+      Minimum force value required to stay in force mode after hysteresis is
+      applied.
+
+      In baseline mode, this is the delta from the touch-start baseline.
+      In absolute mode, this is the distance from the startup idle reading.
 
 config INPUT_IQS9151_FORCE_BASELINE_SETTLE_MS
     int "IQS9151 FSR baseline settle window (ms)"
@@ -245,10 +250,10 @@ config INPUT_IQS9151_FORCE_USE_ABSOLUTE
     bool "IQS9151 use absolute analog force thresholds"
     default n
     help
-      Use the current analog FSR level directly for force enter/release and
-      precision scaling instead of computing a delta from a touch-start
-      baseline. When INPUT_IQS9151_FORCE_INVERT_ANALOG is enabled, the driver
-      internally normalizes lower raw ADC readings into higher force values.
+      Use the startup idle reading as the zero-force reference and measure
+      force as distance from that point, instead of computing a delta from a
+      touch-start baseline. When INPUT_IQS9151_FORCE_INVERT_ANALOG is enabled,
+      the driver interprets lower raw ADC readings as stronger force.
 
 config INPUT_IQS9151_FORCE_ENTER_DEBOUNCE_MS
     int "IQS9151 FSR force enter debounce (ms)"
