@@ -6,6 +6,12 @@
         reg = <0x5a>;
         status = "okay";
     };
+
+    fsr_adc: ads1115@48 {
+        compatible = "ti,ads1115-fsr";
+        reg = <0x48>;
+        status = "okay";
+    };
 };
 
 &kscan0 {
@@ -29,5 +35,7 @@
 };
 
 &iqs9151 {
+    fsr-device = <&fsr_adc>;
+    fsr-channel = <0>;
     haptic-device = <&drv2605l>;
 };
