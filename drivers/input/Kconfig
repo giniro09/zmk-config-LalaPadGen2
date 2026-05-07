@@ -241,6 +241,15 @@ config INPUT_IQS9151_FORCE_INVERT_ANALOG
       FSR divider is wired such that pressing the sensor pulls the ADC value
       downward instead of upward.
 
+config INPUT_IQS9151_FORCE_USE_ABSOLUTE
+    bool "IQS9151 use absolute analog force thresholds"
+    default n
+    help
+      Use the current analog FSR level directly for force enter/release and
+      precision scaling instead of computing a delta from a touch-start
+      baseline. When INPUT_IQS9151_FORCE_INVERT_ANALOG is enabled, the driver
+      internally normalizes lower raw ADC readings into higher force values.
+
 config INPUT_IQS9151_FORCE_ENTER_DEBOUNCE_MS
     int "IQS9151 FSR force enter debounce (ms)"
     range 0 100

@@ -92,6 +92,7 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define FORCE_RELEASE_THRESHOLD CONFIG_INPUT_IQS9151_FORCE_RELEASE_THRESHOLD
 #define FORCE_BASELINE_SETTLE_MS CONFIG_INPUT_IQS9151_FORCE_BASELINE_SETTLE_MS
 #define FORCE_INVERT_ANALOG IS_ENABLED(CONFIG_INPUT_IQS9151_FORCE_INVERT_ANALOG)
+#define FORCE_USE_ABSOLUTE IS_ENABLED(CONFIG_INPUT_IQS9151_FORCE_USE_ABSOLUTE)
 #define FORCE_ENTER_DEBOUNCE_MS CONFIG_INPUT_IQS9151_FORCE_ENTER_DEBOUNCE_MS
 #define FORCE_RELEASE_DEBOUNCE_MS CONFIG_INPUT_IQS9151_FORCE_RELEASE_DEBOUNCE_MS
 #define FORCE_MOVE_THRESHOLD CONFIG_INPUT_IQS9151_FORCE_MOVE_THRESHOLD
@@ -3130,6 +3131,8 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     const bool precision_only_origin = moving_context && !tapdrag_active;
     const bool defer_static_one_finger_click =
         !force_diag_mode && frame->finger_count == 1U && !moving_context && !tapdrag_active;
+    uint16_t force_measure = 0U;
+
     if (!iqs9151_read_fsr(data, &fsr_raw)) {
         return false;
     }
@@ -3144,8 +3147,13 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         data->fsr_touch_baseline_fingers = 0U;
         data->fsr_touch_baseline_started_ms = now_ms;
         data->fsr_touch_baseline_valid = true;
-        signed_delta = fsr_raw;
-        fsr_delta = fsr_raw;
+        force_measure = fsr_raw;
+        signed_delta = force_measure;
+        fsr_delta = force_measure;
+    } else if (FORCE_USE_ABSOLUTE) {
+        force_measure = FORCE_INVERT_ANALOG ? (uint16_t)(INT16_MAX - fsr_raw) : fsr_raw;
+        signed_delta = force_measure;
+        fsr_delta = force_measure;
     } else {
         if (!touching) {
             data->fsr_touch_baseline_valid = false;
@@ -3183,21 +3191,22 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
                 fsr_delta = signed_delta;
             }
         }
+        force_measure = (uint16_t)CLAMP(fsr_delta, 0, UINT16_MAX);
     }
-    data->force.fsr_delta_raw = (uint16_t)CLAMP(fsr_delta, 0, UINT16_MAX);
+    data->force.fsr_delta_raw = force_measure;
 
     if (!data->force.active && now_ms < data->force.rearm_block_until_ms) {
         return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
-    const bool force_rising = signed_delta >= data->force.fsr_signed_delta_raw;
+    const bool force_rising = force_measure >= (uint16_t)MAX(0, data->force.fsr_signed_delta_raw);
 
     if (!data->force.active &&
-        (fsr_delta < FORCE_THRESHOLD || (!force_diag_mode && !force_rising))) {
+        (force_measure < FORCE_THRESHOLD || (!force_diag_mode && !force_rising))) {
         data->force.enter_candidate_since_ms = 0;
     }
     if (!data->force.active &&
-        (touching || force_diag_mode) && fsr_delta >= FORCE_THRESHOLD &&
+        (touching || force_diag_mode) && force_measure >= FORCE_THRESHOLD &&
         (force_diag_mode || force_rising)) {
         if (data->force.enter_candidate_since_ms == 0) {
             data->force.enter_candidate_since_ms = now_ms;
@@ -3244,8 +3253,8 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         }
 
         if (force_diag_mode) {
-            LOG_INF("FSR diag enter raw=%u baseline=%u delta=%d",
-                    fsr_raw, data->fsr_touch_baseline_raw, fsr_delta);
+            LOG_INF("FSR diag enter raw=%u baseline=%u force=%u",
+                    fsr_raw, data->fsr_touch_baseline_raw, force_measure);
         } else if (frame->finger_count == 1U && (moving_context || tapdrag_active)) {
             data->force.precision_active = true;
             data->force.caret_candidate = false;
@@ -3268,7 +3277,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     const bool immediate_release =
         (!touching && !force_diag_mode) ||
         (!force_diag_mode && frame->finger_count != data->force.finger_count);
-    const bool threshold_release = fsr_delta <= FORCE_RELEASE_THRESHOLD;
+    const bool threshold_release = force_measure <= FORCE_RELEASE_THRESHOLD;
 
     if (!immediate_release && !threshold_release) {
         data->force.release_candidate_since_ms = 0;
@@ -3293,10 +3302,10 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
             released_from_hold = true;
         }
         if (force_diag_mode) {
-            LOG_INF("FSR diag release raw=%u baseline=%u delta=%d",
-                    fsr_raw, data->fsr_touch_baseline_raw, fsr_delta);
+            LOG_INF("FSR diag release raw=%u baseline=%u force=%u",
+                    fsr_raw, data->fsr_touch_baseline_raw, force_measure);
         }
-        if (!force_diag_mode && touching) {
+        if (!force_diag_mode && touching && !FORCE_USE_ABSOLUTE) {
             data->fsr_touch_baseline_raw = fsr_raw;
             data->fsr_touch_baseline_fingers = frame->finger_count;
             data->fsr_touch_baseline_started_ms = now_ms;
