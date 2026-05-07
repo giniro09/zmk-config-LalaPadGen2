@@ -505,22 +505,13 @@ static uint16_t iqs9151_force_absolute_measure(uint16_t raw) {
     }
 
     /*
-     * For inverted analog wiring, pressing lowers the raw ADC value. Map that
-     * into a synthetic "force" value that still grows upward so the rest of
-     * the state machine can keep using the same enter/release thresholds.
-     *
-     * With this mapping:
-     * - raw >= FORCE_THRESHOLD            -> force 0
-     * - raw == FORCE_RELEASE_THRESHOLD    -> force FORCE_THRESHOLD
-     * - raw == FORCE_THRESHOLD            -> force FORCE_RELEASE_THRESHOLD
+     * For inverted analog wiring, pressing lowers the raw ADC value. Convert it
+     * into a monotonic "force gets larger when pressed harder" axis that does
+     * not depend on the configured thresholds, so the same absolute thresholds
+     * keep their meaning even when we tune them later.
      */
-    if (raw >= FORCE_THRESHOLD) {
-        return 0U;
-    }
-
-    const int32_t force =
-        (int32_t)FORCE_THRESHOLD - (int32_t)raw + (int32_t)FORCE_RELEASE_THRESHOLD;
-    return (uint16_t)CLAMP(force, 0, UINT16_MAX);
+    const uint16_t full_scale = 0x7FFF;
+    return raw >= full_scale ? 0U : (uint16_t)(full_scale - raw);
 }
 
 static bool iqs9151_tapdrag_active(const struct iqs9151_data *data) {
