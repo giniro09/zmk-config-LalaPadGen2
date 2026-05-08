@@ -229,6 +229,40 @@ config INPUT_IQS9151_FORCE_RELEASE_THRESHOLD
       In baseline mode, this is the delta from the touch-start baseline.
       In absolute mode, this is the distance from the startup idle reading.
 
+config INPUT_IQS9151_FORCE_THRESHOLD_2F
+    int "IQS9151 FSR two-finger force threshold"
+    range 1 32767
+    default INPUT_IQS9151_FORCE_THRESHOLD
+    help
+      Minimum force value required to enter force mode while two fingers are
+      touching the trackpad. This can be higher than the one-finger threshold
+      because normal two-finger contact tends to load the FSR more.
+
+config INPUT_IQS9151_FORCE_RELEASE_THRESHOLD_2F
+    int "IQS9151 FSR two-finger release threshold"
+    range 1 32767
+    default INPUT_IQS9151_FORCE_RELEASE_THRESHOLD
+    help
+      Minimum force value required to stay in two-finger force mode after
+      hysteresis is applied.
+
+config INPUT_IQS9151_FORCE_THRESHOLD_3F
+    int "IQS9151 FSR three-finger force threshold"
+    range 1 32767
+    default INPUT_IQS9151_FORCE_THRESHOLD_2F
+    help
+      Minimum force value required to enter force mode while three fingers are
+      touching the trackpad. This can be higher than the two-finger threshold
+      because normal three-finger contact tends to load the FSR more.
+
+config INPUT_IQS9151_FORCE_RELEASE_THRESHOLD_3F
+    int "IQS9151 FSR three-finger release threshold"
+    range 1 32767
+    default INPUT_IQS9151_FORCE_RELEASE_THRESHOLD_2F
+    help
+      Minimum force value required to stay in three-finger force mode after
+      hysteresis is applied.
+
 config INPUT_IQS9151_FORCE_BASELINE_SETTLE_MS
     int "IQS9151 FSR baseline settle window (ms)"
     range 0 200

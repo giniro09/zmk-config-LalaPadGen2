@@ -90,6 +90,10 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define TWO_FINGER_PINCH_WHEEL_GAIN_DEN 10
 #define FORCE_THRESHOLD CONFIG_INPUT_IQS9151_FORCE_THRESHOLD
 #define FORCE_RELEASE_THRESHOLD CONFIG_INPUT_IQS9151_FORCE_RELEASE_THRESHOLD
+#define FORCE_THRESHOLD_2F CONFIG_INPUT_IQS9151_FORCE_THRESHOLD_2F
+#define FORCE_RELEASE_THRESHOLD_2F CONFIG_INPUT_IQS9151_FORCE_RELEASE_THRESHOLD_2F
+#define FORCE_THRESHOLD_3F CONFIG_INPUT_IQS9151_FORCE_THRESHOLD_3F
+#define FORCE_RELEASE_THRESHOLD_3F CONFIG_INPUT_IQS9151_FORCE_RELEASE_THRESHOLD_3F
 #define FORCE_BASELINE_SETTLE_MS CONFIG_INPUT_IQS9151_FORCE_BASELINE_SETTLE_MS
 #define FORCE_INVERT_ANALOG IS_ENABLED(CONFIG_INPUT_IQS9151_FORCE_INVERT_ANALOG)
 #define FORCE_USE_ABSOLUTE IS_ENABLED(CONFIG_INPUT_IQS9151_FORCE_USE_ABSOLUTE)
@@ -545,6 +549,28 @@ static uint16_t iqs9151_force_button_for_fingers(uint8_t finger_count) {
 
 static uint8_t iqs9151_force_effective_finger_count(uint8_t finger_count) {
     return finger_count;
+}
+
+static uint16_t iqs9151_force_threshold_for_fingers(uint8_t finger_count) {
+    switch (finger_count) {
+    case 2U:
+        return FORCE_THRESHOLD_2F;
+    case 3U:
+        return FORCE_THRESHOLD_3F;
+    default:
+        return FORCE_THRESHOLD;
+    }
+}
+
+static uint16_t iqs9151_force_release_threshold_for_fingers(uint8_t finger_count) {
+    switch (finger_count) {
+    case 2U:
+        return FORCE_RELEASE_THRESHOLD_2F;
+    case 3U:
+        return FORCE_RELEASE_THRESHOLD_3F;
+    default:
+        return FORCE_RELEASE_THRESHOLD;
+    }
 }
 
 static int iqs9151_drv2605l_write(const struct iqs9151_config *cfg, uint8_t reg, uint8_t value) {
@@ -3201,6 +3227,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     const bool precision_only_origin = moving_context && !tapdrag_active;
     const bool defer_static_one_finger_click =
         !force_diag_mode && force_finger_count == 1U && !moving_context && !tapdrag_active;
+    const uint16_t enter_threshold = iqs9151_force_threshold_for_fingers(force_finger_count);
     uint16_t force_measure = 0U;
 
     if (!iqs9151_read_fsr(data, &fsr_raw)) {
@@ -3303,12 +3330,12 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     const bool force_rising = force_measure >= (uint16_t)MAX(0, data->force.fsr_signed_delta_raw);
 
     if (!data->force.active &&
-        (force_measure < FORCE_THRESHOLD ||
+        (force_measure < enter_threshold ||
          (!force_diag_mode && require_force_rising && !force_rising))) {
         data->force.enter_candidate_since_ms = 0;
     }
     if (!data->force.active &&
-        (touching || force_diag_mode) && force_measure >= FORCE_THRESHOLD &&
+        (touching || force_diag_mode) && force_measure >= enter_threshold &&
         (force_diag_mode || !require_force_rising || force_rising)) {
         if (data->force.enter_candidate_since_ms == 0) {
             data->force.enter_candidate_since_ms = now_ms;
@@ -3395,9 +3422,11 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         (data->force.mode == IQS9151_FORCE_MODE_HOLD_DRAG) &&
         data->force.button_down_sent &&
         data->hold_owner == IQS9151_HOLD_OWNER_FORCE;
+    const uint16_t release_threshold =
+        iqs9151_force_release_threshold_for_fingers(data->force.finger_count);
     const uint16_t effective_release_threshold =
-        hold_drag_latched ? (uint16_t)MAX(1, (FORCE_RELEASE_THRESHOLD * 3) / 4)
-                          : FORCE_RELEASE_THRESHOLD;
+        hold_drag_latched ? (uint16_t)MAX(1, (release_threshold * 3) / 4)
+                          : release_threshold;
     const bool threshold_release = force_measure <= effective_release_threshold;
 
     if (!immediate_release && !threshold_release) {
