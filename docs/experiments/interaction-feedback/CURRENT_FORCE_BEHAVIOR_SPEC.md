@@ -96,6 +96,8 @@ Force click 用 haptic は DRV2605L の RTP mode で短い強めの click を再
 - brake: `0x88` を `1600us`
 - zero: `0x00` を `600us`
 
+2本指 Force は 1本指 Force と区別しやすいように、同じ Force click haptic を短い間隔で2回鳴らす。
+
 ただし、1本指 Force が「移動中の文脈」または TapDrag 中の文脈から入った場合、Force haptic は鳴らさない。これは本来 Precision / overlay 用の入口として扱うための条件だが、現在は Precision が無効なので、haptic 抑制だけが残るケースがある。
 
 ## Tap / TapDrag との関係
@@ -123,7 +125,7 @@ Caret は `CONFIG_INPUT_IQS9151_CARET_ENABLE=y` のため有効。
 
 静止文脈の 1本指 Force が `450ms` 続いた場合に caret mode へ入り、通常 pointer 出力を止めて `INPUT_KEY_LEFT / RIGHT / UP / DOWN` を生成する。
 
-Caret に入る前は Force-owned `INPUT_BTN_0` hold として扱う。Caret に入る瞬間にその hold を release し、Force click と同じ click 感のある haptic を2回繰り返す。以後は指の中心位置からの移動量を矢印キー入力に変換する。Caret 候補中に明確な移動が出た場合は Caret 候補をキャンセルし、そのまま primary drag として扱う。
+Caret に入る前は Force-owned `INPUT_BTN_0` hold として扱う。Caret に入る瞬間にその hold を release し、Force click と同じ click 感のある haptic を2回繰り返す。以後は指の中心位置からの移動量を矢印キー入力に変換する。Caret 中は1文字ぶんの矢印キー入力を出すたびに短い cursor tick haptic を返す。Caret 候補中に明確な移動が出た場合は Caret 候補をキャンセルし、そのまま primary drag として扱う。
 
 ## 実機確認が必要な点
 

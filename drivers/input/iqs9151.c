@@ -698,6 +698,12 @@ restore_internal:
     iqs9151_haptic_after_playback(data);
 }
 
+static void iqs9151_haptic_play_force_double_click(struct iqs9151_data *data) {
+    iqs9151_haptic_play_force_click(data);
+    k_sleep(K_MSEC(35));
+    iqs9151_haptic_play_force_click(data);
+}
+
 static void iqs9151_haptic_play_tap(struct iqs9151_data *data) {
     iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
 
@@ -1852,6 +1858,7 @@ static void iqs9151_caret_emit_motion_steps(struct iqs9151_data *data, const str
         }
 
         iqs9151_emit_key_tap(dev, code);
+        iqs9151_haptic_play_cursor_tick(data);
         steps++;
     }
 }
@@ -3381,7 +3388,11 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
 
         if (!(latched_force_finger_count == 1U && (moving_context || tapdrag_active))) {
             if (!iqs9151_haptic_play_state_diag(data, 1U)) {
-                iqs9151_haptic_play_force_click(data);
+                if (latched_force_finger_count == 2U) {
+                    iqs9151_haptic_play_force_double_click(data);
+                } else {
+                    iqs9151_haptic_play_force_click(data);
+                }
             }
         }
 
@@ -3539,9 +3550,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
             data->force.button_down_sent = false;
         }
         if (!iqs9151_haptic_play_state_diag(data, 3U)) {
-            iqs9151_haptic_play_force_click(data);
-            k_sleep(K_MSEC(35));
-            iqs9151_haptic_play_force_click(data);
+            iqs9151_haptic_play_force_double_click(data);
         }
     }
 
