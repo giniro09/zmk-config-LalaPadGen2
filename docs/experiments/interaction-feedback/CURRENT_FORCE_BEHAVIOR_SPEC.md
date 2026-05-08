@@ -6,7 +6,7 @@
 
 ## 現在の有効状態
 
-左右どちらの shield 設定でも、Force は有効、Precision と Caret は無効になっている。
+左右どちらの shield 設定でも、Force と Caret は有効、Precision は無効になっている。
 
 ```conf
 CONFIG_INPUT_IQS9151_FORCE_THRESHOLD=11200
@@ -16,10 +16,10 @@ CONFIG_INPUT_IQS9151_FORCE_ENTER_DEBOUNCE_MS=5
 CONFIG_INPUT_IQS9151_FORCE_RELEASE_DEBOUNCE_MS=35
 CONFIG_INPUT_IQS9151_FORCE_MOVE_THRESHOLD=36
 CONFIG_INPUT_IQS9151_PRECISION_ENABLE=n
-CONFIG_INPUT_IQS9151_CARET_ENABLE=n
+CONFIG_INPUT_IQS9151_CARET_ENABLE=y
 ```
 
-Precision / Caret 関連のコード、input processor、設定値は残っているが、現設定では driver が `precision_active` や `caret_active` に入らないため、実動作としては Force 判定と Force-owned button hold が中心になる。
+Precision 関連のコード、input processor、設定値は残っているが、現設定では driver が `precision_active` に入らないため実効しない。Caret は有効化されており、1本指 Force の静止長押しから入る。
 
 ## 使用デバイス
 
@@ -54,22 +54,15 @@ Force は、以下の条件を満たすと active になる。
 
 Force に入ると、driver 内部では `force.active=true` になり、押下時の指本数と Force button が latch される。
 
-現実装では、Force 入口で `2本指 Force` が `1本指 Force` として latch される。
-
-```c
-const uint8_t latched_force_finger_count =
-    (force_finger_count == 2U) ? 1U : force_finger_count;
-```
-
-そのため、現在の実効挙動は次の通り。
+現在の実効挙動は次の通り。
 
 | 入力 | 現在の実効扱い |
 | --- | --- |
-| 1本指 Force | `INPUT_BTN_0` の Force-owned hold |
-| 2本指 Force | 1本指 Force に丸められ、`INPUT_BTN_0` の Force-owned hold |
-| 3本指 Force | Force 状態には入るが、現在の `CONFIG_INPUT_IQS9151_CARET_ENABLE=n` 分岐では Force-owned button down は送られない |
+| 1本指 Force | `INPUT_BTN_0` の Force-owned hold。静止が `300ms` 続くと button up を送って Caret に入る |
+| 2本指 Force | `INPUT_BTN_1` の Force-owned hold |
+| 3本指 Force | `INPUT_BTN_5` の Force-owned hold。既存の 3F-up 仮想入力を使い、Task View / Overview 系の操作に割り当てる |
 
-1本指 / 2本指 Force では、Force-owned hold として button down を送り、Force release まで保持する。したがって、単発 click というより「押し込みで primary button を押し下げ、圧が抜けるか指が離れたら release する」挙動になる。
+Force では、Force-owned hold として button down を送り、Force release まで保持する。したがって、単発 click というより「押し込みで button を押し下げ、圧が抜けるか指が離れたら release する」挙動になる。1本指 Force だけは Caret 候補にもなり、Force 入口後に静止が続いた場合は保持中の `INPUT_BTN_0` を release してから Caret へ移行する。
 
 ## Force release
 
@@ -114,17 +107,16 @@ Precision は `CONFIG_INPUT_IQS9151_PRECISION_ENABLE=n` のため無効。
 
 ## Caret の現在の扱い
 
-Caret は `CONFIG_INPUT_IQS9151_CARET_ENABLE=n` のため無効。
+Caret は `CONFIG_INPUT_IQS9151_CARET_ENABLE=y` のため有効。
 
-コード上は、静止文脈の 1本指 Force が一定時間続いた場合に caret mode へ入り、通常 pointer 出力を止めて `INPUT_KEY_LEFT / RIGHT / UP / DOWN` を生成する設計が残っている。現在は Caret 無効のため、`CONFIG_INPUT_IQS9151_CARET_HOLD_MS=300` などの設定値は実効しない。
+静止文脈の 1本指 Force が `300ms` 続いた場合に caret mode へ入り、通常 pointer 出力を止めて `INPUT_KEY_LEFT / RIGHT / UP / DOWN` を生成する。
 
-Caret が無効なので、静止 1本指 Force は caret candidate にはならず、Force-owned `INPUT_BTN_0` hold として扱われる。
+Caret に入る前は Force-owned `INPUT_BTN_0` hold として扱う。Caret に入る瞬間にその hold を release し、以後は指の中心位置からの移動量を矢印キー入力に変換する。Caret 候補中に明確な移動が出た場合は Caret 候補をキャンセルし、そのまま primary drag として扱う。
 
 ## 実機確認が必要な点
 
 - 1本指 Force の press / drag / release が、意図通り primary button hold として動くか。
-- 2本指 Force が現在 primary button に丸められていることが意図通りか。
-- 3本指 Force が現状 button down を出さないことが意図通りか。
+- 2本指 Force が secondary button hold / drag として自然に使えるか。
+- 3本指 Force の Task View / Overview 系割り当てが、Windows / macOS の両レイヤーで期待通りか。
 - moving context からの Force で haptic が抑制されることが、Precision 無効中でも自然に感じられるか。
 - TapDrag 中に Force threshold を超えた場合の ownership / release が実機操作で破綻しないか。
-

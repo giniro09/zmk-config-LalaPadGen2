@@ -536,7 +536,8 @@ static uint16_t iqs9151_force_button_for_fingers(uint8_t finger_count) {
     case 2U:
         return INPUT_BTN_1;
     case 3U:
-        return INPUT_BTN_2;
+        /* Reuse the existing 3F-up virtual action for Task View / Overview. */
+        return INPUT_BTN_5;
     default:
         return 0U;
     }
@@ -2943,11 +2944,18 @@ static bool iqs9151_update_gesture_sessions(struct iqs9151_data *data,
     bool released_from_hold = false;
     const bool suppress_one_finger_gestures =
         data->force.active && data->force.mode == IQS9151_FORCE_MODE_PRECISION_ONLY;
+    const bool suppress_gestures_for_force =
+        data->force.active && !data->force.precision_active && !data->force.overlay_only;
 
     if (suppress_one_finger_gestures) {
         iqs9151_clear_one_finger_click_pending(data);
         (void)k_work_cancel_delayable(&data->one_finger_click_work);
         iqs9151_one_finger_reset(&data->one_finger);
+    }
+
+    if (suppress_gestures_for_force) {
+        iqs9151_reset_gesture_states(data, dev, false);
+        return released_from_hold;
     }
 
     if (frame->finger_count > 1U && data->one_finger_click_pending) {
@@ -3312,7 +3320,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         uint16_t center_x = 0U;
         uint16_t center_y = 0U;
 
-        const uint8_t latched_force_finger_count = (force_finger_count == 2U) ? 1U : force_finger_count;
+        const uint8_t latched_force_finger_count = force_finger_count;
 
         iqs9151_force_reset(data);
         data->force.active = true;
@@ -3359,7 +3367,9 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
             data->force.precision_active = true;
             data->force.caret_candidate = false;
             data->force.mode = IQS9151_FORCE_MODE_PRECISION_ONLY;
-        } else if (latched_force_finger_count == 1U && IS_ENABLED(CONFIG_INPUT_IQS9151_CARET_ENABLE)) {
+        } else if (latched_force_finger_count == 1U &&
+                   IS_ENABLED(CONFIG_INPUT_IQS9151_CARET_ENABLE) &&
+                   !moving_context && !tapdrag_active) {
             data->force.caret_candidate = true;
         }
     }
@@ -3371,8 +3381,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
-    const uint8_t active_force_finger_count =
-        (data->force.active && force_finger_count == 2U) ? 1U : force_finger_count;
+    const uint8_t active_force_finger_count = force_finger_count;
     const bool immediate_release =
         (!touching && !force_diag_mode) ||
         (!force_diag_mode && active_force_finger_count != data->force.finger_count);
@@ -3453,8 +3462,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
-    if (data->force.finger_count == 1U &&
-        !IS_ENABLED(CONFIG_INPUT_IQS9151_CARET_ENABLE) &&
+    if (!data->force.overlay_only &&
         data->force.mode == IQS9151_FORCE_MODE_NONE &&
         data->force.button != 0U) {
         if (iqs9151_emit_hold_press_owned(data, dev, data->force.button,
@@ -3462,7 +3470,6 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
             data->force.button_down_sent = true;
             data->force.mode = IQS9151_FORCE_MODE_HOLD_DRAG;
         }
-        return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
     if (!IS_ENABLED(CONFIG_INPUT_IQS9151_CARET_ENABLE)) {
@@ -3474,6 +3481,11 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     }
 
     if (data->force.finger_count != 1U) {
+        data->force.caret_candidate = false;
+        return iqs9151_force_return(data, signed_delta, released_from_hold);
+    }
+
+    if (data->force.caret_candidate && immediate_motion_context) {
         data->force.caret_candidate = false;
         return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
