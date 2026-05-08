@@ -1,2 +1,6 @@
 deps/zmk/
 deps/zmk-driver-iqs9151/
+.obsidian/appearance.json
+.obsidian/core-plugins.json
+.obsidian/workspace.json
+.obsidian/app.json
