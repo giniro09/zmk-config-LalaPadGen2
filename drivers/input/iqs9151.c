@@ -3339,11 +3339,19 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         (!touching && !force_diag_mode) ||
         (!force_diag_mode && active_force_finger_count != data->force.finger_count);
     /*
-     * Keep release behavior easy to reason about: once force is active, every
-     * mode uses the same release threshold. This reduces surprise when tuning
-     * hysteresis and makes re-entry behavior easier to predict.
+     * Hold-drag needs a little extra hysteresis because pressure naturally
+     * relaxes once the finger starts sliding. Keep the general release tuning
+     * easy to reason about, but allow held drags to release at a somewhat
+     * lower threshold so they do not break mid-drag.
      */
-    const bool threshold_release = force_measure <= FORCE_RELEASE_THRESHOLD;
+    const bool hold_drag_latched =
+        (data->force.mode == IQS9151_FORCE_MODE_HOLD_DRAG) &&
+        data->force.button_down_sent &&
+        data->hold_owner == IQS9151_HOLD_OWNER_FORCE;
+    const uint16_t effective_release_threshold =
+        hold_drag_latched ? (uint16_t)MAX(1, (FORCE_RELEASE_THRESHOLD * 3) / 4)
+                          : FORCE_RELEASE_THRESHOLD;
+    const bool threshold_release = force_measure <= effective_release_threshold;
 
     if (!immediate_release && !threshold_release) {
         data->force.release_candidate_since_ms = 0;
