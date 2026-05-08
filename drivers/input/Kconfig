@@ -255,6 +255,15 @@ config INPUT_IQS9151_FORCE_USE_ABSOLUTE
       touch-start baseline. When INPUT_IQS9151_FORCE_INVERT_ANALOG is enabled,
       the driver interprets lower raw ADC readings as stronger force.
 
+config INPUT_IQS9151_FORCE_ABSOLUTE_STARTUP_CAL_MS
+    int "IQS9151 absolute-force startup calibration window (ms)"
+    range 0 5000
+    default 600
+    help
+      When absolute analog force thresholds are enabled, reserve this startup
+      window to learn the unloaded FSR idle point before force detection is
+      allowed to engage. This helps when the mechanism applies preload at boot.
+
 config INPUT_IQS9151_FORCE_ENTER_DEBOUNCE_MS
     int "IQS9151 FSR force enter debounce (ms)"
     range 0 100

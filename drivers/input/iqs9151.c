@@ -93,6 +93,7 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define FORCE_BASELINE_SETTLE_MS CONFIG_INPUT_IQS9151_FORCE_BASELINE_SETTLE_MS
 #define FORCE_INVERT_ANALOG IS_ENABLED(CONFIG_INPUT_IQS9151_FORCE_INVERT_ANALOG)
 #define FORCE_USE_ABSOLUTE IS_ENABLED(CONFIG_INPUT_IQS9151_FORCE_USE_ABSOLUTE)
+#define FORCE_ABSOLUTE_STARTUP_CAL_MS CONFIG_INPUT_IQS9151_FORCE_ABSOLUTE_STARTUP_CAL_MS
 #define FORCE_ENTER_DEBOUNCE_MS CONFIG_INPUT_IQS9151_FORCE_ENTER_DEBOUNCE_MS
 #define FORCE_RELEASE_DEBOUNCE_MS CONFIG_INPUT_IQS9151_FORCE_RELEASE_DEBOUNCE_MS
 #define FORCE_MOVE_THRESHOLD CONFIG_INPUT_IQS9151_FORCE_MOVE_THRESHOLD
@@ -355,6 +356,7 @@ struct iqs9151_data {
     uint16_t fsr_absolute_zero_raw;
     bool fsr_stable_valid;
     bool fsr_absolute_zero_valid;
+    int64_t fsr_absolute_calibrate_until_ms;
     uint16_t fsr_touch_baseline_raw;
     uint8_t fsr_touch_baseline_fingers;
     int64_t fsr_touch_baseline_started_ms;
@@ -3175,6 +3177,18 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         signed_delta = force_measure;
         fsr_delta = force_measure;
     } else if (FORCE_USE_ABSOLUTE) {
+        if (now_ms < data->fsr_absolute_calibrate_until_ms) {
+            if (!data->fsr_absolute_zero_valid) {
+                data->fsr_absolute_zero_raw = fsr_raw;
+                data->fsr_absolute_zero_valid = true;
+            } else {
+                data->fsr_absolute_zero_raw =
+                    (uint16_t)((((uint32_t)data->fsr_absolute_zero_raw) * 3U) + fsr_raw) / 4U;
+            }
+            force_measure = 0U;
+            signed_delta = 0;
+            fsr_delta = 0U;
+        } else
         if (!touching && !data->force.active) {
             if (!data->fsr_absolute_zero_valid) {
                 data->fsr_absolute_zero_raw = fsr_raw;
@@ -4007,6 +4021,10 @@ static int iqs9151_init(const struct device *dev) {
     data->fsr_touch_baseline_started_ms = 0;
     data->fsr_guard_until_ms = 0;
     data->fsr_touch_baseline_valid = false;
+    data->fsr_absolute_zero_raw = 0U;
+    data->fsr_absolute_zero_valid = false;
+    data->fsr_absolute_calibrate_until_ms =
+        k_uptime_get() + FORCE_ABSOLUTE_STARTUP_CAL_MS;
     data->fsr_ready = false;
     data->haptic_ready = false;
     (void)iqs9151_fsr_init(data, cfg);
@@ -4113,6 +4131,10 @@ void iqs9151_test_context_init(void *ctx, const struct device *dev) {
     data->fsr_touch_baseline_started_ms = 0;
     data->fsr_guard_until_ms = 0;
     data->fsr_touch_baseline_valid = false;
+    data->fsr_absolute_zero_raw = 0U;
+    data->fsr_absolute_zero_valid = false;
+    data->fsr_absolute_calibrate_until_ms =
+        k_uptime_get() + FORCE_ABSOLUTE_STARTUP_CAL_MS;
 }
 
 void iqs9151_test_cancel_pending_work(void *ctx) {
