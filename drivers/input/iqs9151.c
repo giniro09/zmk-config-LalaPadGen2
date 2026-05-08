@@ -3510,7 +3510,9 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
             data->force.button_down_sent = false;
         }
         if (!iqs9151_haptic_play_state_diag(data, 3U)) {
-            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_CARET);
+            iqs9151_haptic_play_force_click(data);
+            k_sleep(K_MSEC(35));
+            iqs9151_haptic_play_force_click(data);
         }
     }
 
