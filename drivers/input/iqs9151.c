@@ -540,16 +540,6 @@ static uint16_t iqs9151_force_button_for_fingers(uint8_t finger_count) {
 }
 
 static uint8_t iqs9151_force_effective_finger_count(uint8_t finger_count) {
-    /*
-     * Once the FSR path is involved, treat 2-finger contact as a 1-finger
-     * force gesture. This lets normal 2-finger scroll/pinch coexist before
-     * force engages, while keeping force-click / precision stable even if the
-     * touch controller briefly sees a second contact blob during a press.
-     */
-    if (finger_count == 2U) {
-        return 1U;
-    }
-
     return finger_count;
 }
 
@@ -3274,8 +3264,10 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
 
         iqs9151_force_reset(data);
         data->force.active = true;
-        data->force.finger_count = force_finger_count;
-        data->force.button = iqs9151_force_button_for_fingers(force_finger_count);
+        const uint8_t latched_force_finger_count = (frame->finger_count == 2U) ? 1U : frame->finger_count;
+
+        data->force.finger_count = latched_force_finger_count;
+        data->force.button = iqs9151_force_button_for_fingers(latched_force_finger_count);
         data->force.overlay_only = tapdrag_active;
         data->force.moving_origin = precision_only_origin;
         data->force.mode = IQS9151_FORCE_MODE_NONE;
@@ -3302,7 +3294,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
 
         }
 
-        if (!(force_finger_count == 1U && (moving_context || tapdrag_active))) {
+        if (!(latched_force_finger_count == 1U && (moving_context || tapdrag_active))) {
             if (!iqs9151_haptic_play_state_diag(data, 1U)) {
                 iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_FORCE);
             }
@@ -3311,11 +3303,11 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         if (force_diag_mode) {
             LOG_INF("FSR diag enter raw=%u baseline=%u force=%u",
                     fsr_raw, data->fsr_touch_baseline_raw, force_measure);
-        } else if (force_finger_count == 1U && (moving_context || tapdrag_active)) {
+        } else if (latched_force_finger_count == 1U && (moving_context || tapdrag_active)) {
             data->force.precision_active = true;
             data->force.caret_candidate = false;
             data->force.mode = IQS9151_FORCE_MODE_PRECISION_ONLY;
-        } else if (force_finger_count == 1U && IS_ENABLED(CONFIG_INPUT_IQS9151_CARET_ENABLE)) {
+        } else if (latched_force_finger_count == 1U && IS_ENABLED(CONFIG_INPUT_IQS9151_CARET_ENABLE)) {
             data->force.caret_candidate = true;
         }
     }
@@ -3327,9 +3319,11 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
+    const uint8_t active_force_finger_count =
+        (data->force.active && frame->finger_count == 2U) ? 1U : frame->finger_count;
     const bool immediate_release =
         (!touching && !force_diag_mode) ||
-        (!force_diag_mode && force_finger_count != data->force.finger_count);
+        (!force_diag_mode && active_force_finger_count != data->force.finger_count);
     const bool threshold_release = force_measure <= FORCE_RELEASE_THRESHOLD;
 
     if (!immediate_release && !threshold_release) {
@@ -3393,7 +3387,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
-    if (force_finger_count == 1U &&
+    if (data->force.finger_count == 1U &&
         !IS_ENABLED(CONFIG_INPUT_IQS9151_CARET_ENABLE) &&
         data->force.mode == IQS9151_FORCE_MODE_NONE &&
         data->force.button != 0U) {
@@ -3413,7 +3407,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
-    if (force_finger_count != 1U) {
+    if (data->force.finger_count != 1U) {
         data->force.caret_candidate = false;
         return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
