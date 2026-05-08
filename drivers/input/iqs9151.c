@@ -539,6 +539,21 @@ static uint16_t iqs9151_force_button_for_fingers(uint8_t finger_count) {
     }
 }
 
+static uint8_t iqs9151_force_effective_finger_count(uint8_t finger_count) {
+    const bool two_finger_gestures_disabled =
+        !IS_ENABLED(CONFIG_INPUT_IQS9151_2F_TAP_ENABLE) &&
+        !IS_ENABLED(CONFIG_INPUT_IQS9151_2F_PRESSHOLD_ENABLE) &&
+        !IS_ENABLED(CONFIG_INPUT_IQS9151_SCROLL_X_ENABLE) &&
+        !IS_ENABLED(CONFIG_INPUT_IQS9151_SCROLL_Y_ENABLE) &&
+        !IS_ENABLED(CONFIG_INPUT_IQS9151_2F_PINCH_ENABLE);
+
+    if (finger_count == 2U && two_finger_gestures_disabled) {
+        return 1U;
+    }
+
+    return finger_count;
+}
+
 static int iqs9151_drv2605l_write(const struct iqs9151_config *cfg, uint8_t reg, uint8_t value) {
     return i2c_reg_write_byte_dt(&cfg->haptic, reg, value);
 }
@@ -3135,6 +3150,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     int32_t signed_delta = 0;
     bool released_from_hold = false;
     const bool touching = frame->finger_count >= 1U && frame->finger_count <= 3U;
+    const uint8_t force_finger_count = iqs9151_force_effective_finger_count(frame->finger_count);
     const bool tapdrag_active = iqs9151_tapdrag_active(data);
     const int32_t enter_abs_x = iqs9151_abs32(frame->rel_x);
     const int32_t enter_abs_y = iqs9151_abs32(frame->rel_y);
@@ -3145,11 +3161,11 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         data->last_single_finger_motion_ms != 0 &&
         (now_ms - data->last_single_finger_motion_ms) <= FORCE_MOVING_CONTEXT_WINDOW_MS;
     const bool moving_context =
-        touching && frame->finger_count == 1U &&
+        touching && force_finger_count == 1U &&
         (immediate_motion_context || recent_motion_context);
     const bool precision_only_origin = moving_context && !tapdrag_active;
     const bool defer_static_one_finger_click =
-        !force_diag_mode && frame->finger_count == 1U && !moving_context && !tapdrag_active;
+        !force_diag_mode && force_finger_count == 1U && !moving_context && !tapdrag_active;
     uint16_t force_measure = 0U;
 
     if (!iqs9151_read_fsr(data, &fsr_raw)) {
@@ -3259,8 +3275,8 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
 
         iqs9151_force_reset(data);
         data->force.active = true;
-        data->force.finger_count = frame->finger_count;
-        data->force.button = iqs9151_force_button_for_fingers(frame->finger_count);
+        data->force.finger_count = force_finger_count;
+        data->force.button = iqs9151_force_button_for_fingers(force_finger_count);
         data->force.overlay_only = tapdrag_active;
         data->force.moving_origin = precision_only_origin;
         data->force.mode = IQS9151_FORCE_MODE_NONE;
@@ -3287,7 +3303,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
 
         }
 
-        if (!(frame->finger_count == 1U && (moving_context || tapdrag_active))) {
+        if (!(force_finger_count == 1U && (moving_context || tapdrag_active))) {
             if (!iqs9151_haptic_play_state_diag(data, 1U)) {
                 iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_FORCE);
             }
@@ -3296,11 +3312,11 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         if (force_diag_mode) {
             LOG_INF("FSR diag enter raw=%u baseline=%u force=%u",
                     fsr_raw, data->fsr_touch_baseline_raw, force_measure);
-        } else if (frame->finger_count == 1U && (moving_context || tapdrag_active)) {
+        } else if (force_finger_count == 1U && (moving_context || tapdrag_active)) {
             data->force.precision_active = true;
             data->force.caret_candidate = false;
             data->force.mode = IQS9151_FORCE_MODE_PRECISION_ONLY;
-        } else if (frame->finger_count == 1U && IS_ENABLED(CONFIG_INPUT_IQS9151_CARET_ENABLE)) {
+        } else if (force_finger_count == 1U && IS_ENABLED(CONFIG_INPUT_IQS9151_CARET_ENABLE)) {
             data->force.caret_candidate = true;
         }
     }
@@ -3314,7 +3330,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
 
     const bool immediate_release =
         (!touching && !force_diag_mode) ||
-        (!force_diag_mode && frame->finger_count != data->force.finger_count);
+        (!force_diag_mode && force_finger_count != data->force.finger_count);
     const bool threshold_release = force_measure <= FORCE_RELEASE_THRESHOLD;
 
     if (!immediate_release && !threshold_release) {
@@ -3378,7 +3394,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
-    if (frame->finger_count == 1U &&
+    if (force_finger_count == 1U &&
         !IS_ENABLED(CONFIG_INPUT_IQS9151_CARET_ENABLE) &&
         data->force.mode == IQS9151_FORCE_MODE_NONE &&
         data->force.button != 0U) {
@@ -3398,7 +3414,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
-    if (frame->finger_count != 1U) {
+    if (force_finger_count != 1U) {
         data->force.caret_candidate = false;
         return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
