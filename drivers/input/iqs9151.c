@@ -98,6 +98,7 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define FORCE_RELEASE_DEBOUNCE_MS CONFIG_INPUT_IQS9151_FORCE_RELEASE_DEBOUNCE_MS
 #define FORCE_MOVE_THRESHOLD CONFIG_INPUT_IQS9151_FORCE_MOVE_THRESHOLD
 #define FORCE_MOVING_CONTEXT_WINDOW_MS 85
+#define PRECISION_ENABLE IS_ENABLED(CONFIG_INPUT_IQS9151_PRECISION_ENABLE)
 #define CARET_HOLD_MS CONFIG_INPUT_IQS9151_CARET_HOLD_MS
 #define CARET_DEADZONE CONFIG_INPUT_IQS9151_CARET_DEADZONE
 #define CARET_REPEAT_INITIAL_MS CONFIG_INPUT_IQS9151_CARET_REPEAT_INITIAL_MS
@@ -3317,7 +3318,9 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         if (force_diag_mode) {
             LOG_INF("FSR diag enter raw=%u baseline=%u force=%u",
                     fsr_raw, data->fsr_touch_baseline_raw, force_measure);
-        } else if (latched_force_finger_count == 1U && (moving_context || tapdrag_active)) {
+        } else if (PRECISION_ENABLE &&
+                   latched_force_finger_count == 1U &&
+                   (moving_context || tapdrag_active)) {
             data->force.precision_active = true;
             data->force.caret_candidate = false;
             data->force.mode = IQS9151_FORCE_MODE_PRECISION_ONLY;
@@ -3394,7 +3397,8 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
-    if (!data->force.caret_active &&
+    if (PRECISION_ENABLE &&
+        !data->force.caret_active &&
         immediate_motion_context) {
         data->force.caret_candidate = false;
         if (data->force.mode == IQS9151_FORCE_MODE_NONE) {

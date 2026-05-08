@@ -288,6 +288,14 @@ config INPUT_IQS9151_FORCE_MOVE_THRESHOLD
       Relative movement threshold used to classify a force press as a
       moving-context precision interaction.
 
+config INPUT_IQS9151_PRECISION_ENABLE
+    bool "IQS9151 precision mode enable"
+    default y
+    help
+      Enable moving-context force presses to enter precision mode. Disable
+      this temporarily to isolate static-force click/drag behavior without
+      changing the underlying force detection path.
+
 config INPUT_IQS9151_CARET_ENABLE
     bool "IQS9151 caret mode enable"
     default y
