@@ -3339,19 +3339,11 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         (!touching && !force_diag_mode) ||
         (!force_diag_mode && active_force_finger_count != data->force.finger_count);
     /*
-     * Static force hold-drag needs a softer release threshold than precision:
-     * pressure usually relaxes a bit once the finger starts to slide, but we
-     * still want the user to be able to intentionally release without fully
-     * lifting off. So keep hold-drag a little "stickier", not infinite.
+     * Keep release behavior easy to reason about: once force is active, every
+     * mode uses the same release threshold. This reduces surprise when tuning
+     * hysteresis and makes re-entry behavior easier to predict.
      */
-    const bool hold_drag_latched =
-        (data->force.mode == IQS9151_FORCE_MODE_HOLD_DRAG) &&
-        data->force.button_down_sent &&
-        data->hold_owner == IQS9151_HOLD_OWNER_FORCE;
-    const uint16_t effective_release_threshold =
-        hold_drag_latched ? (uint16_t)MAX(1, FORCE_RELEASE_THRESHOLD / 2)
-                          : FORCE_RELEASE_THRESHOLD;
-    const bool threshold_release = force_measure <= effective_release_threshold;
+    const bool threshold_release = force_measure <= FORCE_RELEASE_THRESHOLD;
 
     if (!immediate_release && !threshold_release) {
         data->force.release_candidate_since_ms = 0;
