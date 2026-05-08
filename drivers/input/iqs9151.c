@@ -3324,7 +3324,18 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     const bool immediate_release =
         (!touching && !force_diag_mode) ||
         (!force_diag_mode && active_force_finger_count != data->force.finger_count);
-    const bool threshold_release = force_measure <= FORCE_RELEASE_THRESHOLD;
+    /*
+     * Once static force has become a held click, keep that hold alive until
+     * the touch actually ends (or finger role changes). Requiring pressure to
+     * stay above the release threshold makes drag-start brittle because the
+     * force naturally relaxes a bit as the finger begins to slide.
+     */
+    const bool hold_drag_latched =
+        (data->force.mode == IQS9151_FORCE_MODE_HOLD_DRAG) &&
+        data->force.button_down_sent &&
+        data->hold_owner == IQS9151_HOLD_OWNER_FORCE;
+    const bool threshold_release =
+        hold_drag_latched ? false : (force_measure <= FORCE_RELEASE_THRESHOLD);
 
     if (!immediate_release && !threshold_release) {
         data->force.release_candidate_since_ms = 0;
