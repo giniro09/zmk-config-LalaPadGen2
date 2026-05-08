@@ -3262,10 +3262,10 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         uint16_t center_x = 0U;
         uint16_t center_y = 0U;
 
+        const uint8_t latched_force_finger_count = (force_finger_count == 2U) ? 1U : force_finger_count;
+
         iqs9151_force_reset(data);
         data->force.active = true;
-        const uint8_t latched_force_finger_count = (frame->finger_count == 2U) ? 1U : frame->finger_count;
-
         data->force.finger_count = latched_force_finger_count;
         data->force.button = iqs9151_force_button_for_fingers(latched_force_finger_count);
         data->force.overlay_only = tapdrag_active;
@@ -3320,7 +3320,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
     }
 
     const uint8_t active_force_finger_count =
-        (data->force.active && frame->finger_count == 2U) ? 1U : frame->finger_count;
+        (data->force.active && force_finger_count == 2U) ? 1U : force_finger_count;
     const bool immediate_release =
         (!touching && !force_diag_mode) ||
         (!force_diag_mode && active_force_finger_count != data->force.finger_count);
