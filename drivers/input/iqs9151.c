@@ -540,14 +540,13 @@ static uint16_t iqs9151_force_button_for_fingers(uint8_t finger_count) {
 }
 
 static uint8_t iqs9151_force_effective_finger_count(uint8_t finger_count) {
-    const bool two_finger_gestures_disabled =
-        !IS_ENABLED(CONFIG_INPUT_IQS9151_2F_TAP_ENABLE) &&
-        !IS_ENABLED(CONFIG_INPUT_IQS9151_2F_PRESSHOLD_ENABLE) &&
-        !IS_ENABLED(CONFIG_INPUT_IQS9151_SCROLL_X_ENABLE) &&
-        !IS_ENABLED(CONFIG_INPUT_IQS9151_SCROLL_Y_ENABLE) &&
-        !IS_ENABLED(CONFIG_INPUT_IQS9151_2F_PINCH_ENABLE);
-
-    if (finger_count == 2U && two_finger_gestures_disabled) {
+    /*
+     * Once the FSR path is involved, treat 2-finger contact as a 1-finger
+     * force gesture. This lets normal 2-finger scroll/pinch coexist before
+     * force engages, while keeping force-click / precision stable even if the
+     * touch controller briefly sees a second contact blob during a press.
+     */
+    if (finger_count == 2U) {
         return 1U;
     }
 
