@@ -98,6 +98,8 @@ Force click 用 haptic は DRV2605L の RTP mode で短い強めの click を再
 
 2本指 Force は 1本指 Force と区別しやすいように、同じ Force click haptic を短い間隔で2回鳴らす。
 
+通常 tap click の haptic は無効。tap は指を離す動作自体がフィードバックになるため、触覚フィードバックは Force / Caret / Caret 中の文字送りに寄せる。
+
 ただし、1本指 Force が「移動中の文脈」または TapDrag 中の文脈から入った場合、Force haptic は鳴らさない。これは本来 Precision / overlay 用の入口として扱うための条件だが、現在は Precision が無効なので、haptic 抑制だけが残るケースがある。
 
 ## Tap / TapDrag との関係

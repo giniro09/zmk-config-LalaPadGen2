@@ -374,6 +374,14 @@ config INPUT_IQS9151_HAPTIC_FSR_GUARD_MS
         so mechanical coupling between the LRA and FSR does not cause false
         force transitions.
 
+config INPUT_IQS9151_TAP_HAPTIC_ENABLE
+    bool "IQS9151 tap haptic enable"
+    default y
+    help
+        Play haptic feedback for normal tap clicks. Force, Caret, and other
+        mode haptics are controlled separately and are not affected by this
+        option.
+
 config INPUT_IQS9151_TAP_REPEAT_DIAG
     bool "IQS9151 tap haptic repeat diagnostic"
     default n

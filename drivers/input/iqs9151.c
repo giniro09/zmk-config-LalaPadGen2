@@ -705,6 +705,10 @@ static void iqs9151_haptic_play_force_double_click(struct iqs9151_data *data) {
 }
 
 static void iqs9151_haptic_play_tap(struct iqs9151_data *data) {
+    if (!IS_ENABLED(CONFIG_INPUT_IQS9151_TAP_HAPTIC_ENABLE)) {
+        return;
+    }
+
     iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
 
     if (!IS_ENABLED(CONFIG_INPUT_IQS9151_TAP_REPEAT_DIAG)) {
