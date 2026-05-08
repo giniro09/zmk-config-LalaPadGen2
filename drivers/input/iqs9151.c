@@ -636,6 +636,41 @@ restore_internal:
     iqs9151_haptic_after_playback(data);
 }
 
+static void iqs9151_haptic_play_force_click(struct iqs9151_data *data) {
+    const struct iqs9151_config *cfg = data->dev->config;
+
+    if (!cfg->has_haptic || !data->haptic_ready) {
+        return;
+    }
+
+    /*
+     * Force click should feel more like a short "clack" than the older ROM
+     * buzz. Use the same RTP approach as cursor tick, but give it a little
+     * more dwell and rebound so the click is denser without turning into a
+     * long vibration.
+     */
+    if (iqs9151_drv2605l_write(cfg, DRV2605L_REG_MODE, DRV2605L_MODE_RTP) != 0) {
+        LOG_WRN("DRV2605L RTP mode set failed");
+        return;
+    }
+    if (iqs9151_drv2605l_write(cfg, DRV2605L_REG_RTP_INPUT, 0x7F) != 0) {
+        LOG_WRN("DRV2605L RTP force kick failed");
+        goto restore_internal;
+    }
+    k_busy_wait(2300);
+    if (iqs9151_drv2605l_write(cfg, DRV2605L_REG_RTP_INPUT, 0x88) != 0) {
+        LOG_WRN("DRV2605L RTP force brake failed");
+        goto restore_internal;
+    }
+    k_busy_wait(1600);
+    (void)iqs9151_drv2605l_write(cfg, DRV2605L_REG_RTP_INPUT, 0x00);
+    k_busy_wait(600);
+
+restore_internal:
+    (void)iqs9151_drv2605l_write(cfg, DRV2605L_REG_MODE, DRV2605L_MODE_INTERNAL_TRIGGER);
+    iqs9151_haptic_after_playback(data);
+}
+
 static void iqs9151_haptic_play_tap(struct iqs9151_data *data) {
     iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_TAP);
 
@@ -1810,7 +1845,7 @@ static void iqs9151_force_poll_work_cb(struct k_work *work) {
             if (!data->force.active && fsr_raw >= FORCE_THRESHOLD) {
                 data->force.active = true;
                 LOG_INF("FSR direct diag enter ch=%u raw=%u", fsr_channel, fsr_raw);
-                iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_FORCE);
+                iqs9151_haptic_play_force_click(data);
                 (void)input_report_key(dev, INPUT_BTN_0, 1, true, K_NO_WAIT);
                 (void)input_report_key(dev, INPUT_BTN_0, 0, true, K_NO_WAIT);
             } else if (data->force.active && fsr_raw <= FORCE_RELEASE_THRESHOLD) {
@@ -3311,7 +3346,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
 
         if (!(latched_force_finger_count == 1U && (moving_context || tapdrag_active))) {
             if (!iqs9151_haptic_play_state_diag(data, 1U)) {
-                iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_FORCE);
+                iqs9151_haptic_play_force_click(data);
             }
         }
 
