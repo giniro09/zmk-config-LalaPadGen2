@@ -134,6 +134,14 @@
       box-shadow: 0 0 0 10px rgba(216, 59, 1, 0.08);
     }
 
+    .dot.secondary {
+      width: 28px;
+      height: 28px;
+      border-color: var(--danger);
+      background: rgba(216, 59, 1, 0.18);
+      box-shadow: 0 0 0 8px rgba(216, 59, 1, 0.08);
+    }
+
     aside {
       display: flex;
       flex-direction: column;
@@ -225,7 +233,8 @@
       <div id="pad" class="pad">
         <div class="axis-x"></div>
         <div class="axis-y"></div>
-        <div id="dot" class="dot stale"></div>
+        <div id="dot1" class="dot stale"></div>
+        <div id="dot2" class="dot secondary stale"></div>
       </div>
     </section>
 
@@ -233,18 +242,20 @@
       <div>
         <h1>Touch Position Diagnostic</h1>
         <p class="note">
-          Use this with firmware diagnostic mode. Each mouse movement sample is
-          treated as the current IQS9151 finger1 coordinate, not as a trail.
+          Use this with firmware diagnostic mode. The center is the configured
+          IQS9151 coordinate center, not the current mouse cursor position.
+          Open Pointer Lock with the right trackpad or another mouse, then touch
+          the left trackpad under test. Blue is finger1, orange is finger2.
         </p>
       </div>
 
       <div class="metrics">
         <div class="metric">
-          <div class="label">Sample X</div>
+          <div class="label">Finger1 X</div>
           <div id="xValue" class="value">0</div>
         </div>
         <div class="metric">
-          <div class="label">Sample Y</div>
+          <div class="label">Finger1 Y</div>
           <div id="yValue" class="value">0</div>
         </div>
         <div class="metric">
@@ -256,10 +267,15 @@
           <div id="idleValue" class="value">0</div>
         </div>
         <div class="metric wide">
-          <div class="label">State</div>
+          <div class="label">Touches</div>
           <div id="stateValue" class="value">no sample</div>
         </div>
       </div>
+
+      <p class="note">
+        Left firmware maps finger x 0..2457 and y 0..3072 to page coordinates
+        1..800. The visual center is about 400,400.
+      </p>
 
       <div id="log" class="log"></div>
     </aside>
@@ -267,7 +283,8 @@
 
   <script>
     const pad = document.getElementById("pad");
-    const dot = document.getElementById("dot");
+    const dot1 = document.getElementById("dot1");
+    const dot2 = document.getElementById("dot2");
     const lockBtn = document.getElementById("lockBtn");
     const centerBtn = document.getElementById("centerBtn");
     const clearBtn = document.getElementById("clearBtn");
@@ -283,8 +300,8 @@
     let eventsThisSecond = 0;
     let eventsPerSecond = 0;
     let lastSampleAt = 0;
-    let lastX = 0;
-    let lastY = 0;
+    let pendingX = null;
+    let framePoints = [];
 
     function clamp(value, min, max) {
       return Math.max(min, Math.min(max, value));
@@ -295,36 +312,69 @@
       logEl.textContent = `[${time}] ${text}\n` + logEl.textContent;
     }
 
-    function placeDot(sampleX, sampleY) {
+    function placeDot(dot, sampleX, sampleY, visible) {
+      if (!visible) {
+        dot.classList.add("stale");
+        return;
+      }
+
       const rect = pad.getBoundingClientRect();
-      const normalizedX = clamp((sampleX + range / 2) / range, 0, 1);
-      const normalizedY = clamp((sampleY + range / 2) / range, 0, 1);
+      const normalizedX = clamp((sampleX - 1) / range, 0, 1);
+      const normalizedY = clamp((sampleY - 1) / range, 0, 1);
       const px = normalizedX * rect.width;
       const py = normalizedY * rect.height;
 
       dot.style.left = `${px}px`;
       dot.style.top = `${py}px`;
       dot.classList.remove("stale");
-      dot.classList.toggle("hot", Math.abs(sampleX) > range * 0.42 || Math.abs(sampleY) > range * 0.42);
-      xValue.textContent = Math.round(sampleX);
-      yValue.textContent = Math.round(sampleY);
-      stateValue.textContent = "sample";
+    }
+
+    function renderFrame() {
+      lastSampleAt = performance.now();
+      placeDot(dot1, framePoints[0]?.x || 0, framePoints[0]?.y || 0, framePoints.length >= 1);
+      placeDot(dot2, framePoints[1]?.x || 0, framePoints[1]?.y || 0, framePoints.length >= 2);
+
+      if (framePoints.length >= 1) {
+        xValue.textContent = Math.round(framePoints[0].x);
+        yValue.textContent = Math.round(framePoints[0].y);
+      } else {
+        xValue.textContent = "-";
+        yValue.textContent = "-";
+      }
+      stateValue.textContent = `${framePoints.length} touch${framePoints.length === 1 ? "" : "es"}`;
     }
 
     function handleDiagnosticSample(event) {
       event.preventDefault();
-      lastX = event.movementX || 0;
-      lastY = event.movementY || 0;
-      lastSampleAt = performance.now();
+      const dx = event.movementX || 0;
+      const dy = event.movementY || 0;
+
+      if (dx < 0 || dy < 0) {
+        framePoints = [];
+        pendingX = null;
+        renderFrame();
+      }
+
+      if (dx > 0) {
+        pendingX = dx;
+      }
+
+      if (dy > 0 && pendingX !== null) {
+        framePoints.push({ x: pendingX, y: dy });
+        pendingX = null;
+        renderFrame();
+      }
+
       eventsThisSecond++;
-      placeDot(lastX, lastY);
     }
 
     function centerDot() {
-      lastX = 0;
-      lastY = 0;
-      placeDot(0, 0);
-      dot.classList.add("stale");
+      pendingX = null;
+      framePoints = [];
+      placeDot(dot1, 0, 0, false);
+      placeDot(dot2, 0, 0, false);
+      xValue.textContent = "-";
+      yValue.textContent = "-";
       stateValue.textContent = "centered";
       log("center");
     }
@@ -358,7 +408,8 @@
       const idleMs = lastSampleAt ? Math.round(now - lastSampleAt) : 0;
       idleValue.textContent = idleMs;
       if (!lastSampleAt || idleMs > 250) {
-        dot.classList.add("stale");
+        dot1.classList.add("stale");
+        dot2.classList.add("stale");
         stateValue.textContent = "no recent sample";
       }
     }, 80);
