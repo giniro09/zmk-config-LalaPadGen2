@@ -4149,6 +4149,9 @@ static int iqs9151_init(const struct device *dev) {
 
     // start IRQ
     iqs9151_set_interrupt(dev, true);
+    if (IS_ENABLED(CONFIG_INPUT_IQS9151_STARTUP_HAPTIC_ENABLE)) {
+        iqs9151_haptic_play_cursor_tick(data);
+    }
     LOG_DBG("Initialization complete");
     return 0;
 }

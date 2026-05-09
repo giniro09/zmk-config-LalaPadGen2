@@ -382,6 +382,14 @@ config INPUT_IQS9151_TAP_HAPTIC_ENABLE
         mode haptics are controlled separately and are not affected by this
         option.
 
+config INPUT_IQS9151_STARTUP_HAPTIC_ENABLE
+    bool "IQS9151 startup haptic enable"
+    default n
+    help
+        Play a short haptic tick after the IQS9151 driver has completed
+        initialization and enabled interrupts. This is a readiness cue for
+        the trackpad side, not a general keyboard boot sound.
+
 config INPUT_IQS9151_TAP_REPEAT_DIAG
     bool "IQS9151 tap haptic repeat diagnostic"
     default n

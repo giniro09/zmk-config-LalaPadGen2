@@ -11,10 +11,10 @@
 ```conf
 CONFIG_INPUT_IQS9151_FORCE_THRESHOLD=15000
 CONFIG_INPUT_IQS9151_FORCE_RELEASE_THRESHOLD=9500
-CONFIG_INPUT_IQS9151_FORCE_THRESHOLD_2F=18000
-CONFIG_INPUT_IQS9151_FORCE_RELEASE_THRESHOLD_2F=12000
-CONFIG_INPUT_IQS9151_FORCE_THRESHOLD_3F=21500
-CONFIG_INPUT_IQS9151_FORCE_RELEASE_THRESHOLD_3F=14500
+CONFIG_INPUT_IQS9151_FORCE_THRESHOLD_2F=16000
+CONFIG_INPUT_IQS9151_FORCE_RELEASE_THRESHOLD_2F=10500
+CONFIG_INPUT_IQS9151_FORCE_THRESHOLD_3F=17000
+CONFIG_INPUT_IQS9151_FORCE_RELEASE_THRESHOLD_3F=11500
 CONFIG_INPUT_IQS9151_FORCE_USE_ABSOLUTE=y
 CONFIG_INPUT_IQS9151_FORCE_ENTER_DEBOUNCE_MS=5
 CONFIG_INPUT_IQS9151_FORCE_RELEASE_DEBOUNCE_MS=35
@@ -59,8 +59,8 @@ Force は、以下の条件を満たすと active になる。
 | 指本数 | enter threshold | release threshold |
 | --- | ---: | ---: |
 | 1本指 | `15000` | `9500` |
-| 2本指 | `18000` | `12000` |
-| 3本指 | `21500` | `14500` |
+| 2本指 | `16000` | `10500` |
+| 3本指 | `17000` | `11500` |
 
 ## Force 中の出力
 
@@ -99,6 +99,8 @@ Force click 用 haptic は DRV2605L の RTP mode で短い強めの click を再
 2本指 Force は 1本指 Force と区別しやすいように、同じ Force click haptic を短い間隔で2回鳴らす。
 
 通常 tap click の haptic は無効。tap は指を離す動作自体がフィードバックになるため、触覚フィードバックは Force / Caret / Caret 中の文字送りに寄せる。
+
+起動完了時は、IQS9151 の初期化とIRQ有効化が終わったタイミングで短い tick haptic を1回鳴らす。これは、そのトラックパッド側が操作可能になったことを知らせるための合図として扱う。
 
 ただし、1本指 Force が「移動中の文脈」または TapDrag 中の文脈から入った場合、Force haptic は鳴らさない。これは本来 Precision / overlay 用の入口として扱うための条件だが、現在は Precision が無効なので、haptic 抑制だけが残るケースがある。
 
