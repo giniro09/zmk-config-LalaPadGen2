@@ -9,6 +9,15 @@
 左右どちらの shield 設定でも、Force と Caret は有効、Precision は無効になっている。
 
 ```conf
+# Left side
+CONFIG_INPUT_IQS9151_FORCE_THRESHOLD=18000
+CONFIG_INPUT_IQS9151_FORCE_RELEASE_THRESHOLD=11500
+CONFIG_INPUT_IQS9151_FORCE_THRESHOLD_2F=19000
+CONFIG_INPUT_IQS9151_FORCE_RELEASE_THRESHOLD_2F=12500
+CONFIG_INPUT_IQS9151_FORCE_THRESHOLD_3F=20000
+CONFIG_INPUT_IQS9151_FORCE_RELEASE_THRESHOLD_3F=13500
+
+# Right side
 CONFIG_INPUT_IQS9151_FORCE_THRESHOLD=15000
 CONFIG_INPUT_IQS9151_FORCE_RELEASE_THRESHOLD=9500
 CONFIG_INPUT_IQS9151_FORCE_THRESHOLD_2F=16000
@@ -56,11 +65,14 @@ Force は、以下の条件を満たすと active になる。
 
 指本数が増えるほど通常接触だけで FSR に荷重が乗りやすいため、Force 判定は指本数ごとに別しきい値を使う。
 
-| 指本数 | enter threshold | release threshold |
+| Side / 指本数 | enter threshold | release threshold |
 | --- | ---: | ---: |
-| 1本指 | `15000` | `9500` |
-| 2本指 | `16000` | `10500` |
-| 3本指 | `17000` | `11500` |
+| Right 1本指 | `15000` | `9500` |
+| Right 2本指 | `16000` | `10500` |
+| Right 3本指 | `17000` | `11500` |
+| Left 1本指 | `18000` | `11500` |
+| Left 2本指 | `19000` | `12500` |
+| Left 3本指 | `20000` | `13500` |
 
 ## Force 中の出力
 
