@@ -2991,7 +2991,9 @@ static bool iqs9151_update_gesture_sessions(struct iqs9151_data *data,
     }
 
     if (suppress_gestures_for_force) {
-        iqs9151_reset_gesture_states(data, dev, false);
+        const bool release_tapdrag_hold = data->hold_owner == IQS9151_HOLD_OWNER_TAPDRAG;
+
+        iqs9151_reset_gesture_states(data, dev, release_tapdrag_hold);
         return released_from_hold;
     }
 
