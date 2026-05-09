@@ -42,4 +42,9 @@
 
 &trackpad_listener_L {
     status = "okay";
+    /delete-property/ input-processors;
+
+    lowspeedmode {
+        /delete-property/ input-processors;
+    };
 };

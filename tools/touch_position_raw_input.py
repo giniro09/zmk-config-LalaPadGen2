@@ -135,6 +135,8 @@ class RawTouchViewer:
         self.last_sample_at = 0.0
         self.events_this_second = 0
         self.events_per_second = 0
+        self.raw_events = 0
+        self.diag_markers = 0
 
         self.canvas = tk.Canvas(self.root, bg="#ffffff", highlightthickness=0)
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -148,8 +150,8 @@ class RawTouchViewer:
             panel,
             text=(
                 "Blue = finger1, orange = finger2.\n"
-                "The viewer locks onto the first device that sends the "
-                "diagnostic reset marker."
+                "No button is needed first. Flash both halves with the "
+                "diagnostic firmware, then touch the left trackpad."
             ),
             justify=tk.LEFT,
             wraplength=235,
@@ -160,11 +162,20 @@ class RawTouchViewer:
         self.device_var = tk.StringVar(value="device: unlocked")
         self.point_var = tk.StringVar(value="points: -")
         self.rate_var = tk.StringVar(value="events/s: 0")
+        self.raw_var = tk.StringVar(value="raw mouse events: 0")
+        self.marker_var = tk.StringVar(value="diag markers: 0")
 
-        for var in (self.state_var, self.device_var, self.point_var, self.rate_var):
+        for var in (
+            self.state_var,
+            self.device_var,
+            self.point_var,
+            self.rate_var,
+            self.raw_var,
+            self.marker_var,
+        ):
             tk.Label(panel, textvariable=var, anchor="w", font=("Consolas", 11)).pack(fill=tk.X, pady=3)
 
-        tk.Button(panel, text="Unlock Device", command=self.unlock_device).pack(fill=tk.X, pady=(12, 4))
+        tk.Button(panel, text="Unlock Device Filter", command=self.unlock_device).pack(fill=tk.X, pady=(12, 4))
         tk.Button(panel, text="Clear", command=self.clear_points).pack(fill=tk.X)
 
         self.log = tk.Text(panel, height=12, wrap=tk.WORD, font=("Consolas", 9))
@@ -214,10 +225,12 @@ class RawTouchViewer:
         device = int(raw.header.hDevice)
         dx = int(raw.data.mouse.lLastX)
         dy = int(raw.data.mouse.lLastY)
+        self.raw_events += 1
         self.handle_diag_pair(device, dx, dy)
 
     def handle_diag_pair(self, device: int, dx: int, dy: int) -> None:
         if dx == -RANGE and dy == -RANGE:
+            self.diag_markers += 1
             if self.target_device is None:
                 self.target_device = device
                 self.add_log(f"locked device: 0x{device:x}")
@@ -265,6 +278,8 @@ class RawTouchViewer:
         self.events_per_second = self.events_this_second
         self.events_this_second = 0
         self.rate_var.set(f"events/s: {self.events_per_second}")
+        self.raw_var.set(f"raw mouse events: {self.raw_events}")
+        self.marker_var.set(f"diag markers: {self.diag_markers}")
         self.root.after(1000, self.rate_tick)
 
     def draw(self) -> None:
