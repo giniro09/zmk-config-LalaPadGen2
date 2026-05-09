@@ -44,6 +44,24 @@ config INPUT_IQS9151_FSR_DIAG_MODE
       active trackpad touch. In this mode the driver emits haptics and logs for
       force enter/release, but does not send Force button down/up.
 
+config INPUT_IQS9151_TOUCH_POSITION_DIAG
+    bool "Enable IQS9151 touch-position diagnostic output"
+    default n
+    help
+      Diagnostic option that suppresses normal IQS9151 gesture output and
+      reports finger1 absolute touch coordinates as relative X/Y samples.
+      Use with the touch-position diagnostic page to find a ghost or stuck
+      touch location without relying on logs.
+
+config INPUT_IQS9151_TOUCH_POSITION_DIAG_RANGE
+    int "IQS9151 touch-position diagnostic output range"
+    range 100 2000
+    default 800
+    depends on INPUT_IQS9151_TOUCH_POSITION_DIAG
+    help
+      Full-scale relative output range used for touch-position diagnosis.
+      The driver maps finger1 coordinates to -range/2 through +range/2.
+
 config INPUT_IQS9151_INIT_PRIORITY
     int "IQS9151 init priority"
     default 80

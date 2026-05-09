@@ -182,6 +182,10 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define IQS9151_NRF_SAADC_AIN_BASE 1
 #define IQS9151_CARET_MAX_STEPS_PER_FRAME 4
 
+#ifndef CONFIG_INPUT_IQS9151_TOUCH_POSITION_DIAG_RANGE
+#define CONFIG_INPUT_IQS9151_TOUCH_POSITION_DIAG_RANGE 800
+#endif
+
 struct iqs9151_io_channel_config {
     uint8_t channel;
 };
@@ -3617,6 +3621,27 @@ static void iqs9151_report_frame_events(const struct device *dev,
     }
 }
 
+static void iqs9151_report_touch_position_diag(const struct device *dev,
+                                               const struct iqs9151_frame *frame) {
+    if (!iqs9151_finger1_valid(frame)) {
+        return;
+    }
+
+    const int32_t range = CONFIG_INPUT_IQS9151_TOUCH_POSITION_DIAG_RANGE;
+    const int32_t half_range = range / 2;
+    const int32_t max_x = MAX(1, CONFIG_INPUT_IQS9151_RESOLUTION_X);
+    const int32_t max_y = MAX(1, CONFIG_INPUT_IQS9151_RESOLUTION_Y);
+    const int32_t sample_x =
+        CLAMP(((int32_t)frame->finger1_x * range / max_x) - half_range,
+              INT16_MIN, INT16_MAX);
+    const int32_t sample_y =
+        CLAMP(((int32_t)frame->finger1_y * range / max_y) - half_range,
+              INT16_MIN, INT16_MAX);
+
+    iqs9151_report_rel_event(dev, INPUT_REL_X, sample_x, false, K_NO_WAIT);
+    iqs9151_report_rel_event(dev, INPUT_REL_Y, sample_y, true, K_NO_WAIT);
+}
+
 static void iqs9151_process_frame(struct iqs9151_data *data,
                                   const struct iqs9151_frame *frame,
                                   int64_t now_ms) {
@@ -3631,6 +3656,12 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
     iqs9151_two_finger_result_reset(&two_result);
 
     if (iqs9151_handle_show_reset(data, frame)) {
+        return;
+    }
+
+    if (IS_ENABLED(CONFIG_INPUT_IQS9151_TOUCH_POSITION_DIAG)) {
+        iqs9151_report_touch_position_diag(dev, frame);
+        iqs9151_update_prev_frame(data, frame, &prev_frame);
         return;
     }
 
