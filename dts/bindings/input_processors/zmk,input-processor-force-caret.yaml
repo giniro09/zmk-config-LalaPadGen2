@@ -1,0 +1,16 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: MIT
+
+description: Shared force-hold caret input processor
+
+compatible: "zmk,input-processor-force-caret"
+
+include: ip_zero_param.yaml
+
+properties:
+  side:
+    type: int
+    required: true
+  bindings:
+    type: phandle-array
+    required: true

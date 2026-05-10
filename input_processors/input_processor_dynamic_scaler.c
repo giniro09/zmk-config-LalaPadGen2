@@ -15,7 +15,6 @@
 #endif
 
 #include <zmk/zip_dynamic_scaler.h>
-#include <zmk/iqs9151_runtime.h>
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -155,11 +154,6 @@ static int dyn_scaler_handle_event(const struct device *dev, struct input_event 
 
     for (int i = 0; i < cfg->codes_len; i++) {
         if (cfg->codes[i] == event->code) {
-            if (event->type == INPUT_EV_REL &&
-                (event->code == INPUT_REL_X || event->code == INPUT_REL_Y) &&
-                event->value != 0) {
-                iqs9151_note_global_pointer_motion();
-            }
             return apply_scale_x10(event, zmk_zip_dynamic_scaler_get_scale_x10(cfg->scale_group),
                                    state);
         }

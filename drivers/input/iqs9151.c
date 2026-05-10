@@ -104,7 +104,6 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define FORCE_MOVING_CONTEXT_WINDOW_MS 85
 #define PRECISION_ENABLE IS_ENABLED(CONFIG_INPUT_IQS9151_PRECISION_ENABLE)
 #define CARET_HOLD_MS CONFIG_INPUT_IQS9151_CARET_HOLD_MS
-#define CARET_CROSS_POINTER_GUARD_MS CONFIG_INPUT_IQS9151_CARET_CROSS_POINTER_GUARD_MS
 #define CARET_DEADZONE CONFIG_INPUT_IQS9151_CARET_DEADZONE
 #define CARET_REPEAT_INITIAL_MS CONFIG_INPUT_IQS9151_CARET_REPEAT_INITIAL_MS
 #define CARET_REPEAT_BASE_MS CONFIG_INPUT_IQS9151_CARET_REPEAT_BASE_MS
@@ -416,7 +415,6 @@ struct iqs9151_data {
 
 static atomic_t iqs9151_saved_cursor_inertia_enabled =
     ATOMIC_INIT(IS_ENABLED(CONFIG_INPUT_IQS9151_CURSOR_INERTIA_ENABLE));
-static atomic_t iqs9151_global_pointer_motion_ms = ATOMIC_INIT(0);
 
 static void iqs9151_cursor_inertia_save_cb(struct k_work *work);
 static void iqs9151_tap_repeat_work_cb(struct k_work *work);
@@ -1665,21 +1663,6 @@ uint16_t iqs9151_get_precision_pointer_force_delta(const struct device *dev) {
     }
 
     return data->force.fsr_delta_raw;
-}
-
-void iqs9151_note_global_pointer_motion(void) {
-    atomic_set(&iqs9151_global_pointer_motion_ms, (atomic_val_t)k_uptime_get_32());
-}
-
-static bool iqs9151_global_pointer_motion_recent_since(int64_t now_ms, int64_t since_ms) {
-    const atomic_val_t last_ms = atomic_get(&iqs9151_global_pointer_motion_ms);
-
-    if (CARET_CROSS_POINTER_GUARD_MS <= 0 || last_ms <= 0) {
-        return false;
-    }
-
-    return (int64_t)last_ms >= since_ms &&
-           (now_ms - (int64_t)last_ms) <= CARET_CROSS_POINTER_GUARD_MS;
 }
 
 static void iqs9151_release_hold(struct iqs9151_data *data, const struct device *dev) {
@@ -3552,9 +3535,7 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
         return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
 
-    if (data->force.caret_candidate &&
-        (immediate_motion_context ||
-         iqs9151_global_pointer_motion_recent_since(now_ms, data->force.quiet_since_ms))) {
+    if (data->force.caret_candidate && immediate_motion_context) {
         data->force.caret_candidate = false;
         return iqs9151_force_return(data, signed_delta, released_from_hold);
     }
@@ -3635,7 +3616,6 @@ static void iqs9151_report_frame_events(const struct device *dev,
             iqs9151_report_rel_event(dev, INPUT_REL_WHEEL, two_result->scroll_y, true, K_NO_WAIT);
         }
     } else if (frame->finger_count == 1U && cursor_moving && !suppress_cursor_tail && !caret_active) {
-        iqs9151_note_global_pointer_motion();
         iqs9151_report_rel_event(dev, INPUT_REL_X, frame->rel_x, false, K_NO_WAIT);
         iqs9151_report_rel_event(dev, INPUT_REL_Y, frame->rel_y, true, K_NO_WAIT);
     }

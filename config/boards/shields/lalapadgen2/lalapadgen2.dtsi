@@ -169,11 +169,34 @@
         track-remainders;
     };
 
+    trackpad_force_caret_R: trackpad_force_caret_R {
+        compatible = "zmk,input-processor-force-caret";
+        #input-processor-cells = <0>;
+        side = <1>;
+        bindings = <&tp_to_pos POS_TP_LCLK_R>,
+                   <&kp LEFT>,
+                   <&kp RIGHT>,
+                   <&kp UP>,
+                   <&kp DOWN>;
+    };
+
+    trackpad_force_caret_L: trackpad_force_caret_L {
+        compatible = "zmk,input-processor-force-caret";
+        #input-processor-cells = <0>;
+        side = <0>;
+        bindings = <&tp_to_pos POS_TP_LCLK_L>,
+                   <&kp LEFT>,
+                   <&kp RIGHT>,
+                   <&kp UP>,
+                   <&kp DOWN>;
+    };
+
     trackpad_listener_R: trackpad_listener_R {
         compatible = "zmk,input-listener";
         status = "disabled";
         device = <&trackpad_split_R>;
-        input-processors = <&trackpad_key_behaviors_R>,
+        input-processors = <&trackpad_force_caret_R>,
+                           <&trackpad_key_behaviors_R>,
                            <&trackpad_caret_behaviors>,
                            <&zip_xy_scaler 1 5>,
                            <&zip_scroll_scaler 1 12>,
@@ -182,7 +205,8 @@
                            <&zip_dynamic_scroll_scaler>;
         lowspeedmode {
             layers = <1>,<2>;
-            input-processors =  <&trackpad_key_behaviors_R>,
+            input-processors =  <&trackpad_force_caret_R>,
+                                <&trackpad_key_behaviors_R>,
                                 <&trackpad_caret_behaviors>,
                                 <&zip_xy_scaler 1 15>,
                                 <&zip_scroll_scaler 1 40>,
@@ -195,7 +219,8 @@
         compatible = "zmk,input-listener";
         status = "disabled";
         device = <&trackpad_split_L>;
-        input-processors = <&trackpad_key_behaviors_L>,
+        input-processors = <&trackpad_force_caret_L>,
+                           <&trackpad_key_behaviors_L>,
                            <&trackpad_caret_behaviors>,
                            <&zip_xy_scaler 1 5>,
                            <&zip_scroll_scaler 1 12>,
@@ -204,7 +229,8 @@
                            <&zip_dynamic_scroll_scaler>;
         lowspeedmode {
             layers = <1>,<2>;
-            input-processors =  <&trackpad_key_behaviors_L>,
+            input-processors =  <&trackpad_force_caret_L>,
+                                <&trackpad_key_behaviors_L>,
                                 <&trackpad_caret_behaviors>,
                                 <&zip_xy_scaler 1 15>,
                                 <&zip_scroll_scaler 1 40>,

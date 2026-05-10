@@ -40,6 +40,14 @@ menuconfig ZMK_INPUT_PROCESSOR_BEHAVIORS_CONSUME
       does not generate mouse button output. This avoids relying on STOP
       being honored in layer overrides.
 
+menuconfig ZMK_INPUT_PROCESSOR_FORCE_CARET
+    bool "Shared Force/Caret input processor"
+    default y
+    help
+      Watch trackpad Force primary-button holds centrally, allowing either
+      trackpad to cancel the hold into drag or drive caret movement after the
+      hold becomes caret mode.
+
 menuconfig ZMK_INPUT_PROCESSOR_PRECISION_SCALER
     bool "Precision scaler input processor"
     default y
