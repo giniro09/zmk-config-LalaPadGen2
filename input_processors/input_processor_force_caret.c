@@ -69,8 +69,14 @@ static struct zmk_behavior_binding_event force_caret_event_now(void) {
     return event;
 }
 
+static int force_caret_invoke_with_event(const struct zmk_behavior_binding *binding,
+                                         struct zmk_behavior_binding_event event,
+                                         int32_t value) {
+    return zmk_behavior_invoke_binding(binding, event, value);
+}
+
 static int force_caret_invoke(const struct zmk_behavior_binding *binding, int32_t value) {
-    return zmk_behavior_invoke_binding(binding, force_caret_event_now(), value);
+    return force_caret_invoke_with_event(binding, force_caret_event_now(), value);
 }
 
 static int force_caret_tap(const struct zmk_behavior_binding *binding) {
@@ -82,9 +88,22 @@ static int force_caret_tap(const struct zmk_behavior_binding *binding) {
     return force_caret_invoke(binding, 0);
 }
 
-static void force_caret_play_haptic(const struct zmk_behavior_binding *binding) {
-    (void)force_caret_invoke(binding, 1);
-    (void)force_caret_invoke(binding, 0);
+static struct zmk_behavior_binding_event force_caret_haptic_event_now(uint8_t side) {
+    struct zmk_behavior_binding_event event = force_caret_event_now();
+
+#if IS_ENABLED(CONFIG_ZMK_SPLIT)
+    event.source = side == 0U ? 0U : ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL;
+#else
+    ARG_UNUSED(side);
+#endif
+    return event;
+}
+
+static void force_caret_play_haptic(const struct zmk_behavior_binding *binding, uint8_t side) {
+    struct zmk_behavior_binding_event event = force_caret_haptic_event_now(side);
+
+    (void)force_caret_invoke_with_event(binding, event, 1);
+    (void)force_caret_invoke_with_event(binding, event, 0);
 }
 
 static void force_caret_hold_work_cb(struct k_work *work) {
@@ -102,7 +121,7 @@ static void force_caret_hold_work_cb(struct k_work *work) {
     shared.caret_active = true;
     shared.dx = 0;
     shared.dy = 0;
-    force_caret_play_haptic(&shared.cfg->entry_haptic);
+    force_caret_play_haptic(&shared.cfg->entry_haptic, shared.cfg->side);
     k_mutex_unlock(&shared.lock);
 }
 
@@ -149,7 +168,7 @@ static int force_caret_emit_steps_locked(const struct force_caret_config *motion
         if (ret < 0) {
             return ret;
         }
-        force_caret_play_haptic(&motion_cfg->step_haptic);
+        force_caret_play_haptic(&motion_cfg->step_haptic, motion_cfg->side);
         steps++;
     }
 

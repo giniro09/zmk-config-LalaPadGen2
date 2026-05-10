@@ -80,7 +80,7 @@ static int behavior_iqs9151_haptic_binding_released(struct zmk_behavior_binding 
 }
 
 static const struct behavior_driver_api behavior_iqs9151_haptic_driver_api = {
-    .locality = BEHAVIOR_LOCALITY_GLOBAL,
+    .locality = BEHAVIOR_LOCALITY_EVENT_SOURCE,
     .binding_pressed = behavior_iqs9151_haptic_binding_pressed,
     .binding_released = behavior_iqs9151_haptic_binding_released,
 };
