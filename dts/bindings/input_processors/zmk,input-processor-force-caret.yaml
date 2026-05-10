@@ -14,3 +14,6 @@ properties:
   bindings:
     type: phandle-array
     required: true
+    description: |
+      Behavior bindings in this order: primary button, left, right, up, down,
+      caret-entry haptic, caret-step haptic.

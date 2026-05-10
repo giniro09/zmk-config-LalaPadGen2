@@ -84,6 +84,18 @@
             compatible = "zmk,behavior-trackpad-to-pos";
             #binding-cells = <1>;
         };
+
+        iqs_haptic_l: iqs_haptic_l {
+            compatible = "zmk,behavior-iqs9151-haptic";
+            #binding-cells = <1>;
+            target-side = <0>;
+        };
+
+        iqs_haptic_r: iqs_haptic_r {
+            compatible = "zmk,behavior-iqs9151-haptic";
+            #binding-cells = <1>;
+            target-side = <1>;
+        };
     };
 
     trackpad_key_behaviors_R: trackpad_key_behaviors_R {
@@ -177,7 +189,9 @@
                    <&kp LEFT>,
                    <&kp RIGHT>,
                    <&kp UP>,
-                   <&kp DOWN>;
+                   <&kp DOWN>,
+                   <&iqs_haptic_r 2>,
+                   <&iqs_haptic_r 0>;
     };
 
     trackpad_force_caret_L: trackpad_force_caret_L {
@@ -188,7 +202,9 @@
                    <&kp LEFT>,
                    <&kp RIGHT>,
                    <&kp UP>,
-                   <&kp DOWN>;
+                   <&kp DOWN>,
+                   <&iqs_haptic_l 2>,
+                   <&iqs_haptic_l 0>;
     };
 
     trackpad_listener_R: trackpad_listener_R {

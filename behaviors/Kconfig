@@ -13,6 +13,14 @@ menuconfig ZMK_BEHAVIOR_IQS9151_CURSOR_INERTIA_TOGGLE
       Enable a global behavior that toggles the local IQS9151 cursor inertia
       state on the targeted split side.
 
+menuconfig ZMK_BEHAVIOR_IQS9151_HAPTIC
+    bool "IQS9151 haptic behavior"
+    default y
+    depends on INPUT_IQS9151
+    help
+      Enable a global behavior that plays a local IQS9151 haptic pattern on
+      the targeted split side.
+
 menuconfig ZMK_BEHAVIOR_ZIP_DYNAMIC_SCALE
     bool "Dynamic scale adjust behavior"
     default y

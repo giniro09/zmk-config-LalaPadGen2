@@ -32,6 +32,8 @@ struct force_caret_config {
     struct zmk_behavior_binding right;
     struct zmk_behavior_binding up;
     struct zmk_behavior_binding down;
+    struct zmk_behavior_binding entry_haptic;
+    struct zmk_behavior_binding step_haptic;
 };
 
 struct force_caret_state {
@@ -80,6 +82,11 @@ static int force_caret_tap(const struct zmk_behavior_binding *binding) {
     return force_caret_invoke(binding, 0);
 }
 
+static void force_caret_play_haptic(const struct zmk_behavior_binding *binding) {
+    (void)force_caret_invoke(binding, 1);
+    (void)force_caret_invoke(binding, 0);
+}
+
 static void force_caret_hold_work_cb(struct k_work *work) {
     ARG_UNUSED(work);
 
@@ -95,6 +102,7 @@ static void force_caret_hold_work_cb(struct k_work *work) {
     shared.caret_active = true;
     shared.dx = 0;
     shared.dy = 0;
+    force_caret_play_haptic(&shared.cfg->entry_haptic);
     k_mutex_unlock(&shared.lock);
 }
 
@@ -116,7 +124,7 @@ static void force_caret_consume(struct input_event *event) {
     event->value = 0;
 }
 
-static int force_caret_emit_steps_locked(void) {
+static int force_caret_emit_steps_locked(const struct force_caret_config *motion_cfg) {
     int ret = 0;
     uint8_t steps = 0U;
 
@@ -141,6 +149,7 @@ static int force_caret_emit_steps_locked(void) {
         if (ret < 0) {
             return ret;
         }
+        force_caret_play_haptic(&motion_cfg->step_haptic);
         steps++;
     }
 
@@ -204,7 +213,7 @@ static int force_caret_handle_key(const struct force_caret_config *cfg,
     return ret;
 }
 
-static int force_caret_handle_rel(struct input_event *event) {
+static int force_caret_handle_rel(const struct force_caret_config *cfg, struct input_event *event) {
     int ret = ZMK_INPUT_PROC_CONTINUE;
 
     if (event->code != INPUT_REL_X && event->code != INPUT_REL_Y) {
@@ -231,7 +240,7 @@ static int force_caret_handle_rel(struct input_event *event) {
         } else {
             shared.dy += event->value;
         }
-        ret = force_caret_emit_steps_locked();
+        ret = force_caret_emit_steps_locked(cfg);
         event->value = 0;
     }
 
@@ -252,7 +261,7 @@ static int force_caret_handle_event(const struct device *dev, struct input_event
         return force_caret_handle_key(cfg, event, state);
     }
     if (event->type == INPUT_EV_REL) {
-        return force_caret_handle_rel(event);
+        return force_caret_handle_rel(cfg, event);
     }
 
     return ZMK_INPUT_PROC_CONTINUE;
@@ -268,8 +277,9 @@ static int force_caret_init(const struct device *dev) {
 }
 
 #define FORCE_CARET_INST(n)                                                                        \
-    BUILD_ASSERT(DT_INST_PROP_LEN(n, bindings) == 5,                                               \
-                 "force-caret bindings must be primary, left, right, up, down");                   \
+    BUILD_ASSERT(DT_INST_PROP_LEN(n, bindings) == 7,                                               \
+                 "force-caret bindings must be primary, left, right, up, down, entry haptic, "    \
+                 "step haptic");                                                                 \
     static const struct force_caret_config force_caret_config_##n = {                              \
         .index = n,                                                                                \
         .side = DT_INST_PROP(n, side),                                                             \
@@ -278,6 +288,8 @@ static int force_caret_init(const struct device *dev) {
         .right = ZMK_KEYMAP_EXTRACT_BINDING(2, DT_DRV_INST(n)),                                    \
         .up = ZMK_KEYMAP_EXTRACT_BINDING(3, DT_DRV_INST(n)),                                       \
         .down = ZMK_KEYMAP_EXTRACT_BINDING(4, DT_DRV_INST(n)),                                     \
+        .entry_haptic = ZMK_KEYMAP_EXTRACT_BINDING(5, DT_DRV_INST(n)),                             \
+        .step_haptic = ZMK_KEYMAP_EXTRACT_BINDING(6, DT_DRV_INST(n)),                              \
     };                                                                                             \
     DEVICE_DT_INST_DEFINE(n, &force_caret_init, NULL, NULL, &force_caret_config_##n, POST_KERNEL,  \
                           CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &force_caret_driver_api);

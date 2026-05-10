@@ -708,6 +708,33 @@ static void iqs9151_haptic_play_force_double_click(struct iqs9151_data *data) {
     iqs9151_haptic_play_force_click(data);
 }
 
+int iqs9151_play_cursor_tick_haptic(const struct device *dev) {
+    if (dev == NULL || !device_is_ready(dev)) {
+        return -ENODEV;
+    }
+
+    iqs9151_haptic_play_cursor_tick(dev->data);
+    return 0;
+}
+
+int iqs9151_play_force_click_haptic(const struct device *dev) {
+    if (dev == NULL || !device_is_ready(dev)) {
+        return -ENODEV;
+    }
+
+    iqs9151_haptic_play_force_click(dev->data);
+    return 0;
+}
+
+int iqs9151_play_force_double_click_haptic(const struct device *dev) {
+    if (dev == NULL || !device_is_ready(dev)) {
+        return -ENODEV;
+    }
+
+    iqs9151_haptic_play_force_double_click(dev->data);
+    return 0;
+}
+
 static void iqs9151_haptic_play_tap(struct iqs9151_data *data) {
     if (!IS_ENABLED(CONFIG_INPUT_IQS9151_TAP_HAPTIC_ENABLE)) {
         return;
