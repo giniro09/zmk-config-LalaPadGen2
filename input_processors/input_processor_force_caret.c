@@ -19,8 +19,8 @@
 #include <zmk/keymap.h>
 #include <zmk/virtual_key_position.h>
 
-#define FORCE_CARET_HOLD_MS CONFIG_INPUT_IQS9151_CARET_HOLD_MS
-#define FORCE_CARET_DEADZONE CONFIG_INPUT_IQS9151_CARET_DEADZONE
+#define FORCE_CARET_HOLD_MS CONFIG_ZMK_INPUT_PROCESSOR_FORCE_CARET_HOLD_MS
+#define FORCE_CARET_DEADZONE CONFIG_ZMK_INPUT_PROCESSOR_FORCE_CARET_DEADZONE
 #define FORCE_CARET_MAX_STEPS_PER_EVENT 4
 
 struct force_caret_config {
@@ -120,8 +120,8 @@ static int force_caret_emit_steps_locked(void) {
     uint8_t steps = 0U;
 
     while (steps < FORCE_CARET_MAX_STEPS_PER_EVENT) {
-        const int32_t abs_dx = ABS(shared.dx);
-        const int32_t abs_dy = ABS(shared.dy);
+        const int32_t abs_dx = shared.dx < 0 ? -shared.dx : shared.dx;
+        const int32_t abs_dy = shared.dy < 0 ? -shared.dy : shared.dy;
         const struct zmk_behavior_binding *binding;
 
         if (MAX(abs_dx, abs_dy) < FORCE_CARET_DEADZONE) {

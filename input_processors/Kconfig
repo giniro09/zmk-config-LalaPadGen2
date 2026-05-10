@@ -48,6 +48,26 @@ menuconfig ZMK_INPUT_PROCESSOR_FORCE_CARET
       trackpad to cancel the hold into drag or drive caret movement after the
       hold becomes caret mode.
 
+if ZMK_INPUT_PROCESSOR_FORCE_CARET
+
+config ZMK_INPUT_PROCESSOR_FORCE_CARET_HOLD_MS
+    int "Shared Force/Caret hold delay (ms)"
+    range 50 1000
+    default 450
+    help
+      Quiet time after a Force primary-button hold before the shared processor
+      releases the button and enters caret mode.
+
+config ZMK_INPUT_PROCESSOR_FORCE_CARET_DEADZONE
+    int "Shared Force/Caret deadzone"
+    range 1 500
+    default 80
+    help
+      Relative motion amount consumed per emitted arrow key in shared caret
+      mode.
+
+endif
+
 menuconfig ZMK_INPUT_PROCESSOR_PRECISION_SCALER
     bool "Precision scaler input processor"
     default y
