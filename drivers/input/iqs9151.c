@@ -20,6 +20,7 @@
 #include "iqs9151_test.h"
 
 #include <zmk/iqs9151_runtime.h>
+#include <zmk/workqueue.h>
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -754,11 +755,11 @@ static int iqs9151_schedule_haptic(const struct device *dev,
 
     if (request == IQS9151_HAPTIC_REQUEST_CURSOR_TICK &&
         atomic_get(&data->haptic_request) != IQS9151_HAPTIC_REQUEST_NONE) {
-        return k_work_submit(&data->haptic_work);
+        return k_work_submit_to_queue(zmk_workqueue_lowprio_work_q(), &data->haptic_work);
     }
 
     atomic_set(&data->haptic_request, request);
-    return k_work_submit(&data->haptic_work);
+    return k_work_submit_to_queue(zmk_workqueue_lowprio_work_q(), &data->haptic_work);
 }
 
 int iqs9151_play_cursor_tick_haptic(const struct device *dev) {
