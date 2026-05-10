@@ -743,7 +743,7 @@ static void iqs9151_haptic_work_cb(struct k_work *work) {
             iqs9151_haptic_play_force_double_click(data);
             break;
         case IQS9151_HAPTIC_REQUEST_CURSOR_TICK:
-            iqs9151_haptic_play_cursor_tick(data);
+            iqs9151_haptic_play_effect(data, DRV2605L_EFFECT_CURSOR_TICK);
             break;
         default:
             break;
