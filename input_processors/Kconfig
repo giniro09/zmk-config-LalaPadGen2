@@ -66,6 +66,15 @@ config ZMK_INPUT_PROCESSOR_FORCE_CARET_DEADZONE
       Relative motion amount consumed per emitted arrow key in shared caret
       mode.
 
+config ZMK_INPUT_PROCESSOR_FORCE_CARET_MOVE_THRESHOLD
+    int "Shared Force/Caret drag threshold"
+    range 1 500
+    default 18
+    help
+      Single relative motion event amount that cancels a pending Force/Caret
+      hold into normal drag. Small sensor jitter below this threshold keeps the
+      hold eligible for caret mode.
+
 endif
 
 menuconfig ZMK_INPUT_PROCESSOR_PRECISION_SCALER

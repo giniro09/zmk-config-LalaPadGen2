@@ -21,6 +21,7 @@
 
 #define FORCE_CARET_HOLD_MS CONFIG_ZMK_INPUT_PROCESSOR_FORCE_CARET_HOLD_MS
 #define FORCE_CARET_DEADZONE CONFIG_ZMK_INPUT_PROCESSOR_FORCE_CARET_DEADZONE
+#define FORCE_CARET_MOVE_THRESHOLD CONFIG_ZMK_INPUT_PROCESSOR_FORCE_CARET_MOVE_THRESHOLD
 #define FORCE_CARET_MAX_STEPS_PER_EVENT 4
 
 struct force_caret_config {
@@ -146,6 +147,10 @@ static int force_caret_emit_steps_locked(void) {
     return 0;
 }
 
+static int32_t force_caret_abs32(int32_t value) {
+    return value < 0 ? -value : value;
+}
+
 static int force_caret_handle_key(const struct force_caret_config *cfg,
                                   struct input_event *event,
                                   struct zmk_input_processor_state *state) {
@@ -212,8 +217,10 @@ static int force_caret_handle_rel(struct input_event *event) {
     k_mutex_lock(&shared.lock, K_FOREVER);
 
     if (shared.candidate) {
-        (void)k_work_cancel_delayable(&shared.hold_work);
-        force_caret_reset_locked();
+        if (force_caret_abs32(event->value) >= FORCE_CARET_MOVE_THRESHOLD) {
+            (void)k_work_cancel_delayable(&shared.hold_work);
+            force_caret_reset_locked();
+        }
         k_mutex_unlock(&shared.lock);
         return ret;
     }
