@@ -362,6 +362,15 @@ config INPUT_IQS9151_CARET_HOLD_MS
     help
       Quiet time after a 1-finger force press before entering caret mode.
 
+config INPUT_IQS9151_CARET_CROSS_POINTER_GUARD_MS
+    int "IQS9151 caret cross-pointer guard window (ms)"
+    range 0 2000
+    default 600
+    help
+      Do not enter caret mode while any trackpad pointer motion was seen
+      recently. This lets one side hold Force as a button while the other side
+      moves the pointer for drag-and-drop.
+
 config INPUT_IQS9151_CARET_DEADZONE
     int "IQS9151 caret deadzone"
     range 1 500
