@@ -20,7 +20,6 @@
 #include "iqs9151_test.h"
 
 #include <zmk/iqs9151_runtime.h>
-#include <zmk/workqueue.h>
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -29,6 +28,9 @@
 LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 
 #define DT_DRV_COMPAT azoteq_iqs9151
+
+#define IQS9151_HAPTIC_WORKQUEUE_STACK_SIZE 768
+#define IQS9151_HAPTIC_WORKQUEUE_PRIORITY 10
 
 #define IQS9151_I2C_CHUNK_SIZE 30
 #define IQS9151_RSTD_DELAY_MS 100
@@ -237,6 +239,10 @@ enum iqs9151_haptic_request {
     IQS9151_HAPTIC_REQUEST_FORCE_CLICK,
     IQS9151_HAPTIC_REQUEST_FORCE_DOUBLE_CLICK,
 };
+
+K_THREAD_STACK_DEFINE(iqs9151_haptic_workq_stack, IQS9151_HAPTIC_WORKQUEUE_STACK_SIZE);
+static struct k_work_q iqs9151_haptic_workq;
+
 struct iqs9151_one_finger_state {
     bool active;
     bool hold_sent;
@@ -755,11 +761,11 @@ static int iqs9151_schedule_haptic(const struct device *dev,
 
     if (request == IQS9151_HAPTIC_REQUEST_CURSOR_TICK &&
         atomic_get(&data->haptic_request) != IQS9151_HAPTIC_REQUEST_NONE) {
-        return k_work_submit_to_queue(zmk_workqueue_lowprio_work_q(), &data->haptic_work);
+        return k_work_submit_to_queue(&iqs9151_haptic_workq, &data->haptic_work);
     }
 
     atomic_set(&data->haptic_request, request);
-    return k_work_submit_to_queue(zmk_workqueue_lowprio_work_q(), &data->haptic_work);
+    return k_work_submit_to_queue(&iqs9151_haptic_workq, &data->haptic_work);
 }
 
 int iqs9151_play_cursor_tick_haptic(const struct device *dev) {
@@ -4429,6 +4435,19 @@ void iqs9151_test_force_pinch_session(void *ctx, bool active) {
     data->two_finger.mode = active ? IQS9151_2F_MODE_PINCH : IQS9151_2F_MODE_NONE;
 }
 #endif
+
+static int iqs9151_haptic_workq_init(void) {
+    static const struct k_work_queue_config queue_config = {
+        .name = "IQS9151 Haptic Work Queue",
+    };
+
+    k_work_queue_start(&iqs9151_haptic_workq, iqs9151_haptic_workq_stack,
+                       K_THREAD_STACK_SIZEOF(iqs9151_haptic_workq_stack),
+                       IQS9151_HAPTIC_WORKQUEUE_PRIORITY, &queue_config);
+    return 0;
+}
+
+SYS_INIT(iqs9151_haptic_workq_init, POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT);
 
 #define IQS9151_INIT(inst)                                                                    \
       static const struct iqs9151_config iqs9151_config_##inst = {                             \
