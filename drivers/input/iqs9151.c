@@ -230,6 +230,12 @@ enum iqs9151_force_mode {
     IQS9151_FORCE_MODE_PRECISION_ONLY,
     IQS9151_FORCE_MODE_HOLD_DRAG,
 };
+enum iqs9151_haptic_request {
+    IQS9151_HAPTIC_REQUEST_NONE = 0,
+    IQS9151_HAPTIC_REQUEST_CURSOR_TICK,
+    IQS9151_HAPTIC_REQUEST_FORCE_CLICK,
+    IQS9151_HAPTIC_REQUEST_FORCE_DOUBLE_CLICK,
+};
 struct iqs9151_one_finger_state {
     bool active;
     bool hold_sent;
@@ -350,6 +356,7 @@ struct iqs9151_data {
     struct k_work_delayable caret_repeat_work;
     struct k_work_delayable force_poll_work;
     struct k_work_delayable tap_repeat_work;
+    struct k_work haptic_work;
     struct iqs9151_inertia_state inertia_scroll;
     struct iqs9151_inertia_state inertia_cursor;
     int32_t scroll_ema_x_fp;
@@ -373,6 +380,7 @@ struct iqs9151_data {
     bool fsr_touch_baseline_valid;
     bool fsr_ready;
     bool haptic_ready;
+    atomic_t haptic_request;
     struct iqs9151_motion_history scroll_motion_history;
     struct iqs9151_motion_history cursor_motion_history;
     struct iqs9151_force_state force;
@@ -708,31 +716,61 @@ static void iqs9151_haptic_play_force_double_click(struct iqs9151_data *data) {
     iqs9151_haptic_play_force_click(data);
 }
 
-int iqs9151_play_cursor_tick_haptic(const struct device *dev) {
+static void iqs9151_haptic_work_cb(struct k_work *work) {
+    struct iqs9151_data *data = CONTAINER_OF(work, struct iqs9151_data, haptic_work);
+
+    while (true) {
+        const atomic_val_t request = atomic_get(&data->haptic_request);
+
+        if (request == IQS9151_HAPTIC_REQUEST_NONE) {
+            return;
+        }
+
+        atomic_set(&data->haptic_request, IQS9151_HAPTIC_REQUEST_NONE);
+
+        switch (request) {
+        case IQS9151_HAPTIC_REQUEST_FORCE_CLICK:
+            iqs9151_haptic_play_force_click(data);
+            break;
+        case IQS9151_HAPTIC_REQUEST_FORCE_DOUBLE_CLICK:
+            iqs9151_haptic_play_force_double_click(data);
+            break;
+        case IQS9151_HAPTIC_REQUEST_CURSOR_TICK:
+            iqs9151_haptic_play_cursor_tick(data);
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+static int iqs9151_schedule_haptic(const struct device *dev,
+                                   enum iqs9151_haptic_request request) {
     if (dev == NULL || !device_is_ready(dev)) {
         return -ENODEV;
     }
 
-    iqs9151_haptic_play_cursor_tick(dev->data);
-    return 0;
+    struct iqs9151_data *data = dev->data;
+
+    if (request == IQS9151_HAPTIC_REQUEST_CURSOR_TICK &&
+        atomic_get(&data->haptic_request) != IQS9151_HAPTIC_REQUEST_NONE) {
+        return k_work_submit(&data->haptic_work);
+    }
+
+    atomic_set(&data->haptic_request, request);
+    return k_work_submit(&data->haptic_work);
+}
+
+int iqs9151_play_cursor_tick_haptic(const struct device *dev) {
+    return iqs9151_schedule_haptic(dev, IQS9151_HAPTIC_REQUEST_CURSOR_TICK);
 }
 
 int iqs9151_play_force_click_haptic(const struct device *dev) {
-    if (dev == NULL || !device_is_ready(dev)) {
-        return -ENODEV;
-    }
-
-    iqs9151_haptic_play_force_click(dev->data);
-    return 0;
+    return iqs9151_schedule_haptic(dev, IQS9151_HAPTIC_REQUEST_FORCE_CLICK);
 }
 
 int iqs9151_play_force_double_click_haptic(const struct device *dev) {
-    if (dev == NULL || !device_is_ready(dev)) {
-        return -ENODEV;
-    }
-
-    iqs9151_haptic_play_force_double_click(dev->data);
-    return 0;
+    return iqs9151_schedule_haptic(dev, IQS9151_HAPTIC_REQUEST_FORCE_DOUBLE_CLICK);
 }
 
 static void iqs9151_haptic_play_tap(struct iqs9151_data *data) {
@@ -4162,6 +4200,7 @@ static int iqs9151_init(const struct device *dev) {
     k_work_init_delayable(&data->caret_repeat_work, iqs9151_caret_repeat_work_cb);
     k_work_init_delayable(&data->force_poll_work, iqs9151_force_poll_work_cb);
     k_work_init_delayable(&data->tap_repeat_work, iqs9151_tap_repeat_work_cb);
+    k_work_init(&data->haptic_work, iqs9151_haptic_work_cb);
     iqs9151_inertia_state_reset(&data->inertia_scroll);
     iqs9151_inertia_state_reset(&data->inertia_cursor);
     atomic_set(&data->cursor_inertia_enabled, atomic_get(&iqs9151_saved_cursor_inertia_enabled));
@@ -4197,6 +4236,7 @@ static int iqs9151_init(const struct device *dev) {
         k_uptime_get() + FORCE_ABSOLUTE_STARTUP_CAL_MS;
     data->fsr_ready = false;
     data->haptic_ready = false;
+    atomic_set(&data->haptic_request, IQS9151_HAPTIC_REQUEST_NONE);
     (void)iqs9151_fsr_init(data, cfg);
     (void)iqs9151_haptic_init(data, cfg);
     if (IS_ENABLED(CONFIG_INPUT_IQS9151_FSR_DIAG_MODE) && cfg->has_fsr) {
@@ -4275,6 +4315,7 @@ void iqs9151_test_context_init(void *ctx, const struct device *dev) {
     k_work_init_delayable(&data->caret_repeat_work, iqs9151_caret_repeat_work_cb);
     k_work_init_delayable(&data->force_poll_work, iqs9151_force_poll_work_cb);
     k_work_init_delayable(&data->tap_repeat_work, iqs9151_tap_repeat_work_cb);
+    k_work_init(&data->haptic_work, iqs9151_haptic_work_cb);
     iqs9151_inertia_state_reset(&data->inertia_scroll);
     iqs9151_inertia_state_reset(&data->inertia_cursor);
     atomic_set(&data->cursor_inertia_enabled, atomic_get(&iqs9151_saved_cursor_inertia_enabled));
@@ -4308,6 +4349,7 @@ void iqs9151_test_context_init(void *ctx, const struct device *dev) {
     data->fsr_absolute_zero_valid = false;
     data->fsr_absolute_calibrate_until_ms =
         k_uptime_get() + FORCE_ABSOLUTE_STARTUP_CAL_MS;
+    atomic_set(&data->haptic_request, IQS9151_HAPTIC_REQUEST_NONE);
 }
 
 void iqs9151_test_cancel_pending_work(void *ctx) {
@@ -4321,6 +4363,7 @@ void iqs9151_test_cancel_pending_work(void *ctx) {
     (void)k_work_cancel_delayable(&data->caret_repeat_work);
     (void)k_work_cancel_delayable(&data->force_poll_work);
     (void)k_work_cancel_delayable(&data->tap_repeat_work);
+    (void)k_work_cancel(&data->haptic_work);
     (void)k_work_cancel(&data->work);
 }
 

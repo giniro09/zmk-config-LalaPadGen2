@@ -85,13 +85,13 @@
             #binding-cells = <1>;
         };
 
-        iqs_haptic_l: iqs_haptic_l {
+        ihl: ihl {
             compatible = "zmk,behavior-iqs9151-haptic";
             #binding-cells = <1>;
             target-side = <0>;
         };
 
-        iqs_haptic_r: iqs_haptic_r {
+        ihr: ihr {
             compatible = "zmk,behavior-iqs9151-haptic";
             #binding-cells = <1>;
             target-side = <1>;
@@ -190,8 +190,8 @@
                    <&kp RIGHT>,
                    <&kp UP>,
                    <&kp DOWN>,
-                   <&iqs_haptic_r 2>,
-                   <&iqs_haptic_r 0>;
+                   <&ihr 2>,
+                   <&ihr 0>;
     };
 
     trackpad_force_caret_L: trackpad_force_caret_L {
@@ -203,8 +203,8 @@
                    <&kp RIGHT>,
                    <&kp UP>,
                    <&kp DOWN>,
-                   <&iqs_haptic_l 2>,
-                   <&iqs_haptic_l 0>;
+                   <&ihl 2>,
+                   <&ihl 0>;
     };
 
     trackpad_listener_R: trackpad_listener_R {
