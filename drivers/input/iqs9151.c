@@ -557,7 +557,7 @@ static uint16_t iqs9151_force_button_for_fingers(uint8_t finger_count) {
     case 1U:
         return INPUT_BTN_0;
     case 2U:
-        return INPUT_BTN_1;
+        return 0U;
     case 3U:
         /* Reuse the existing 3F-up virtual action for Task View / Overview. */
         return INPUT_BTN_5;
@@ -1830,6 +1830,13 @@ static bool iqs9151_emit_click(struct iqs9151_data *data,
     iqs9151_report_key_event(dev, button, true, true, K_FOREVER);
     iqs9151_report_key_event(dev, button, false, true, K_FOREVER);
     return true;
+}
+
+static bool iqs9151_emit_double_click(struct iqs9151_data *data,
+                                      const struct device *dev,
+                                      uint16_t button) {
+    return iqs9151_emit_click(data, dev, button) &&
+           iqs9151_emit_click(data, dev, button);
 }
 
 static bool iqs9151_emit_hold_press_owned(struct iqs9151_data *data,
@@ -3476,6 +3483,10 @@ static bool iqs9151_update_force_state(struct iqs9151_data *data,
                     iqs9151_haptic_play_force_click(data);
                 }
             }
+        }
+
+        if (!force_diag_mode && !tapdrag_active && latched_force_finger_count == 2U) {
+            (void)iqs9151_emit_double_click(data, dev, INPUT_BTN_0);
         }
 
         if (force_diag_mode) {
