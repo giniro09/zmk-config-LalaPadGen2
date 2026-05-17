@@ -31,6 +31,8 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 
 #define IQS9151_HAPTIC_WORKQUEUE_STACK_SIZE 768
 #define IQS9151_HAPTIC_WORKQUEUE_PRIORITY 10
+#define IQS9151_WORKQUEUE_STACK_SIZE 1536
+#define IQS9151_WORKQUEUE_PRIORITY 9
 
 #define IQS9151_I2C_CHUNK_SIZE 30
 #define IQS9151_RSTD_DELAY_MS 100
@@ -242,6 +244,8 @@ enum iqs9151_haptic_request {
 
 K_THREAD_STACK_DEFINE(iqs9151_haptic_workq_stack, IQS9151_HAPTIC_WORKQUEUE_STACK_SIZE);
 static struct k_work_q iqs9151_haptic_workq;
+K_THREAD_STACK_DEFINE(iqs9151_workq_stack, IQS9151_WORKQUEUE_STACK_SIZE);
+static struct k_work_q iqs9151_workq;
 
 struct iqs9151_one_finger_state {
     bool active;
@@ -433,6 +437,7 @@ static atomic_t iqs9151_saved_cursor_inertia_enabled =
 
 static void iqs9151_cursor_inertia_save_cb(struct k_work *work);
 static void iqs9151_tap_repeat_work_cb(struct k_work *work);
+static int iqs9151_submit_work(struct iqs9151_data *data);
 
 #if defined(CONFIG_ZMK_SETTINGS_SAVE_DEBOUNCE)
 K_WORK_DELAYABLE_DEFINE(iqs9151_cursor_inertia_save_work, iqs9151_cursor_inertia_save_cb);
@@ -1980,7 +1985,7 @@ static void iqs9151_force_poll_work_cb(struct k_work *work) {
         return;
     }
 
-    k_work_submit(&data->work);
+    (void)iqs9151_submit_work(data);
 }
 
 static void iqs9151_tap_repeat_work_cb(struct k_work *work) {
@@ -3857,9 +3862,13 @@ static void iqs9151_work_cb(struct k_work *work) {
     iqs9151_process_frame(data, &frame, now_ms);
 }
 
+static int iqs9151_submit_work(struct iqs9151_data *data) {
+    return k_work_submit_to_queue(&iqs9151_workq, &data->work);
+}
+
 static void iqs9151_gpio_cb(const struct device *port, struct gpio_callback *cb, uint32_t pins) {
     struct iqs9151_data *data = CONTAINER_OF(cb, struct iqs9151_data, gpio_cb);
-    k_work_submit(&data->work);
+    (void)iqs9151_submit_work(data);
 }
 
 static int iqs9151_set_interrupt(const struct device *dev, const bool en) {
@@ -4451,6 +4460,13 @@ static int iqs9151_haptic_workq_init(void) {
     static const struct k_work_queue_config queue_config = {
         .name = "IQS9151 Haptic Work Queue",
     };
+    static const struct k_work_queue_config input_queue_config = {
+        .name = "IQS9151 Work Queue",
+    };
+
+    k_work_queue_start(&iqs9151_workq, iqs9151_workq_stack,
+                       K_THREAD_STACK_SIZEOF(iqs9151_workq_stack),
+                       IQS9151_WORKQUEUE_PRIORITY, &input_queue_config);
 
     k_work_queue_start(&iqs9151_haptic_workq, iqs9151_haptic_workq_stack,
                        K_THREAD_STACK_SIZEOF(iqs9151_haptic_workq_stack),
